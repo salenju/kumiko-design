@@ -20,19 +20,17 @@ const startSnapshot = ref(null)
 function onMatFocus() {
   if (!startSnapshot.value) startSnapshot.value = project.snapshot()
 }
-function onMatChange(key) {
-  return () => {
-    if (startSnapshot.value) {
-      const before = startSnapshot.value
-      startSnapshot.value = null
-      if (project.snapshot() !== before) history.push(before)
-    }
+/** blur：值有变化则把起点快照入栈（撤销粒度=一次字段编辑） */
+function onMatChange() {
+  if (startSnapshot.value) {
+    const before = startSnapshot.value
+    startSnapshot.value = null
+    if (project.snapshot() !== before) history.push(before)
   }
 }
-function setMaterial(key) {
-  return (v) => {
-    project.setMaterial({ [key]: v == null ? 0 : Number(v) })
-  }
+/** update:value 的直通 handler（key 提前绑定，value 由事件传入） */
+function setMaterialValue(key, v) {
+  project.setMaterial({ [key]: v == null ? 0 : Number(v) })
 }
 
 /** 切割需求按宽度分组 */
@@ -91,8 +89,8 @@ const summary = computed(() => {
               :min="100"
               :step="100"
               @focus="onMatFocus"
-              @update:value="setMaterial('stockLength')"
-              @blur="onMatChange('stockLength')"
+              @update:value="(v) => setMaterialValue('stockLength', v)"
+              @blur="onMatChange"
             />
           </label>
           <label>锯缝 kerf mm
@@ -101,8 +99,8 @@ const summary = computed(() => {
               :min="0"
               :step="0.5"
               @focus="onMatFocus"
-              @update:value="setMaterial('kerf')"
-              @blur="onMatChange('kerf')"
+              @update:value="(v) => setMaterialValue('kerf', v)"
+              @blur="onMatChange"
             />
           </label>
           <label>端部余量 mm
@@ -111,8 +109,8 @@ const summary = computed(() => {
               :min="0"
               :step="0.5"
               @focus="onMatFocus"
-              @update:value="setMaterial('endAllowance')"
-              @blur="onMatChange('endAllowance')"
+              @update:value="(v) => setMaterialValue('endAllowance', v)"
+              @blur="onMatChange"
             />
           </label>
         </div>
