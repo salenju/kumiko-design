@@ -12,7 +12,7 @@ import {
   parseProjectJson,
   pickAndReadJsonFile
 } from '../../utils/projectFile.js'
-import { saveProjectNow } from '../../utils/persist.js'
+import { saveProjectNow, clearPersistedProject } from '../../utils/persist.js'
 import { useMessage } from 'naive-ui'
 
 const emit = defineEmits(['open-presets', 'open-ai', 'open-cutlist', 'fit'])
@@ -45,6 +45,23 @@ function redo() {
 function saveLocal() {
   saveProjectNow(project)
   message.success('已保存到浏览器本地（重新打开页面自动恢复）')
+}
+
+/**
+ * 新建空白项目：清空图案、选择、撤销历史与本地存档。
+ * 若当前画布非空先弹确认，避免误清空。材料参数（条长/kerf）保留。
+ */
+function newProject() {
+  if (project.patterns.length && !window.confirm('新建将清空当前画布（撤销历史也会清除），确定继续吗？')) {
+    return
+  }
+  project.replaceAll({ patterns: [], material: project.material })
+  history.clear()
+  ui.clearSelection()
+  ui.setTool('select')
+  clearPersistedProject()
+  message.success('已新建空白项目')
+  emit('fit')
 }
 
 /** 保存为项目文件（.kumiko.json 下载） */
@@ -106,6 +123,7 @@ function toggleLabels() {
     <div class="tb-sep"></div>
 
     <div class="tb-group" title="文件">
+      <button class="tb-btn" title="新建空白项目（清空画布）" @click="newProject">＋ 新建</button>
       <button class="tb-btn" title="立即保存到浏览器本地（Ctrl+S）" @click="saveLocal">💾 保存</button>
       <button class="tb-btn" title="保存为项目文件 .kumiko.json（下载）" @click="saveFile">⇩ 另存文件</button>
       <button class="tb-btn" title="打开 .kumiko.json 项目文件（替换当前项目，可撤销）" @click="openFile">⇧ 打开文件</button>
