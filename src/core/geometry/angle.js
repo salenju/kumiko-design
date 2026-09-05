@@ -65,3 +65,22 @@ export function angleOfSegment(x1, y1, x2, y2, eps = 1e-9) {
   const deg = rad2deg(Math.atan2(dy, dx))
   return normalizeLineDeg(deg)
 }
+
+/**
+ * 有向向量角度（y-down 画布）：0°=水平向右，90°=竖直向下，范围 [0,360)。
+ * 用于「单线」等由起点+方向定义的线段编辑。
+ */
+export function angleDegOfVector(dx, dy, eps = 1e-9) {
+  if (Math.hypot(dx, dy) < eps) return 0
+  return normalizeDeg(rad2deg(Math.atan2(dy, dx)))
+}
+
+/**
+ * 由 起点 + 长度 + 角度 求终点（极坐标展开，保持起点不动）。
+ * 角度约定与 deg2dir 一致（y-down 画布，0°=水平向右）。
+ * @returns {{x2:number,y2:number}}
+ */
+export function endFromPolar(x1, y1, length, angleDeg) {
+  const { dx, dy } = deg2dir(angleDeg)
+  return { x2: x1 + length * dx, y2: y1 + length * dy }
+}

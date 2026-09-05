@@ -16,17 +16,18 @@ body,
   overflow: hidden;
 }
 
+/* naive-ui 的 n-config-provider 包裹层不保证撑满高度，直接以视口高度铺满最稳妥 */
+.kd-full {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
 body {
   font-family:
     -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
     'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
   background: var(--kd-bg);
-}
-
-.kd-full {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
 }
 
 .kd-main {

@@ -9,6 +9,11 @@ import { useProjectStore } from '../../stores/project.js'
 import { useUiStore } from '../../stores/ui.js'
 import { useHistoryStore } from '../../stores/history.js'
 import { useSelection } from '../../composables/useSelection.js'
+import {
+  angleDegOfVector,
+  endFromPolar,
+  length
+} from '../../core/geometry/index.js'
 
 const project = useProjectStore()
 const ui = useUiStore()
@@ -53,6 +58,62 @@ function removePatterns(ids) {
   const set = new Set(ids)
   ui.setSelectedPatterns(ui.selectedPatternIds.filter((id) => !set.has(id)))
 }
+
+/* ---------- 单线（kind:line）长度/角度 辅助 ---------- */
+
+/** 单线当前长度 mm（从两端点） */
+function lineLength(p) {
+  return length(p.x1, p.y1, p.x2, p.y2)
+}
+
+/** 单线当前有向角度 °（0=水平右，90=竖直下；y-down 与画线一致） */
+function lineAngleDeg(p) {
+  return angleDegOfVector(p.x2 - p.x1, p.y2 - p.y1)
+}
+
+/**
+ * 以「长度」更新终点：保持起点 (x1,y1) 与当前角度不变。
+ * @returns {boolean} 是否产生了有效更新
+ */
+function updateLineByLength(p, v) {
+  const len = Number(v)
+  if (!Number.isFinite(len) || len <= 0) return false
+  const a = lineAngleDeg(p)
+  const end = endFromPolar(p.x1, p.y1, len, a)
+  updatePattern(p.id, end)
+  return true
+}
+
+/**
+ * 以「角度」更新终点：保持起点 (x1,y1) 与当前长度不变。
+ * @returns {boolean} 是否产生了有效更新
+ */
+function updateLineByAngle(p, v) {
+  const a = Number(v)
+  if (!Number.isFinite(a)) return false
+  const cur = lineLength(p)
+  if (cur <= 0) return false // 零长线段无方向，拒绝旋转
+  const end = endFromPolar(p.x1, p.y1, cur, a)
+  updatePattern(p.id, end)
+  return true
+}
+
+/**
+ * 长度输入：change/blur 时一次性应用并记录撤销（避免输入过程被重算打断）；
+ * 无效输入回填当前显示值。
+ */
+function onLineLengthChange(p, e) {
+  const ok = updateLineByLength(p, e.target.value)
+  if (!ok) e.target.value = lineLength(p).toFixed(1)
+  onFieldChange()
+}
+
+/** 角度输入：change/blur 时一次性应用并记录撤销 */
+function onLineAngleChange(p, e) {
+  const ok = updateLineByAngle(p, e.target.value)
+  if (!ok) e.target.value = lineAngleDeg(p).toFixed(1)
+  onFieldChange()
+}
 </script>
 
 <template>
@@ -90,14 +151,39 @@ function removePatterns(ids) {
           </div>
         </div>
 
-        <!-- 单根线段：编辑两端点与宽度 -->
+        <!-- 单根线段：起点 + 长度/角度（以起点为轴），或直接改终点 -->
         <template v-if="p.kind === 'line'">
-          <div class="pp-sub">起点</div>
+          <div class="pp-sub">起点（编辑时保持不动）</div>
           <div class="pp-bounds">
             <div class="pp-field half"><label>X1</label><input type="number" step="1" :value="p.x1" @focus="onFieldFocus" @change="onFieldChange" @input="updatePattern(p.id, { x1: Number($event.target.value) })" /></div>
             <div class="pp-field half"><label>Y1</label><input type="number" step="1" :value="p.y1" @focus="onFieldFocus" @change="onFieldChange" @input="updatePattern(p.id, { y1: Number($event.target.value) })" /></div>
           </div>
-          <div class="pp-sub">终点</div>
+          <div class="pp-sub">长度与角度（由起点指向终点）</div>
+          <div class="pp-field">
+            <label>长度 mm</label>
+            <input
+              type="number"
+              step="0.5"
+              min="0.1"
+              :value="lineLength(p).toFixed(1)"
+              @focus="onFieldFocus"
+              @change="onLineLengthChange(p, $event)"
+              @keydown.enter.prevent="$event.target.blur()"
+            />
+          </div>
+          <div class="pp-field">
+            <label>角度 °</label>
+            <input
+              type="number"
+              step="1"
+              :value="lineAngleDeg(p).toFixed(1)"
+              @focus="onFieldFocus"
+              @change="onLineAngleChange(p, $event)"
+              @keydown.enter.prevent="$event.target.blur()"
+            />
+          </div>
+          <div class="pp-hint2">0°=水平向右，90°=竖直向下（同画线方向）；改长度保持角度，改角度保持长度。</div>
+          <div class="pp-sub">终点（微调）</div>
           <div class="pp-bounds">
             <div class="pp-field half"><label>X2</label><input type="number" step="1" :value="p.x2" @focus="onFieldFocus" @change="onFieldChange" @input="updatePattern(p.id, { x2: Number($event.target.value) })" /></div>
             <div class="pp-field half"><label>Y2</label><input type="number" step="1" :value="p.y2" @focus="onFieldFocus" @change="onFieldChange" @input="updatePattern(p.id, { y2: Number($event.target.value) })" /></div>
@@ -105,9 +191,6 @@ function removePatterns(ids) {
           <div class="pp-field">
             <label>木条宽 mm</label>
             <input type="number" step="0.5" min="0.1" :value="p.width" @focus="onFieldFocus" @change="onFieldChange" @input="updatePattern(p.id, { width: Number($event.target.value) })" />
-          </div>
-          <div class="pp-stats">
-            长度 {{ Math.hypot(p.x2 - p.x1, p.y2 - p.y1).toFixed(1) }} mm
           </div>
         </template>
 
@@ -202,6 +285,7 @@ function removePatterns(ids) {
 .pp-bounds { display: flex; flex-wrap: wrap; gap: 4px; }
 .pp-bounds .pp-field.half { width: 48%; }
 .pp-sub { font-size: 12px; color: #888; margin: 6px 0 4px; }
+.pp-hint2 { font-size: 11px; color: #9a9a9a; margin: 2px 0 6px; line-height: 1.4; }
 .pp-stats { font-size: 12px; color: #666; margin-top: 6px; }
 .pp-delete-all { width: 100%; border: 1px solid #e6b8b4; background: #fdf3f2; color: #c0392b; border-radius: 6px; padding: 6px; cursor: pointer; }
 .pp-delete-all:hover { background: #fdeceb; }

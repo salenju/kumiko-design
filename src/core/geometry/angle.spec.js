@@ -7,7 +7,9 @@ import {
   deg2dir,
   isParallelDeg,
   deg2normal,
-  angleOfSegment
+  angleOfSegment,
+  angleDegOfVector,
+  endFromPolar
 } from '../geometry/angle.js'
 
 describe('angle 角度工具（y-down 画布约定）', () => {
@@ -62,5 +64,33 @@ describe('angle 角度工具（y-down 画布约定）', () => {
     expect(angleOfSegment(10, 0, 0, 0)).toBeCloseTo(0, 9)
     // 退化
     expect(angleOfSegment(1, 1, 1, 1)).toBeNull()
+  })
+
+  it('angleDegOfVector：有向向量角（y-down：0°右、90°下），范围 [0,360)', () => {
+    expect(angleDegOfVector(10, 0)).toBeCloseTo(0, 9)
+    expect(angleDegOfVector(0, 10)).toBeCloseTo(90, 9) // y-down 竖直向下
+    expect(angleDegOfVector(-10, 0)).toBeCloseTo(180, 9)
+    expect(angleDegOfVector(0, -10)).toBeCloseTo(270, 9)
+    expect(angleDegOfVector(0, 0)).toBe(0) // 零向量
+  })
+
+  it('endFromPolar：起点不动，按长度+角度求终点，往返一致', () => {
+    // 0° 水平向右
+    const e0 = endFromPolar(10, 20, 100, 0)
+    expect(e0).toEqual({ x2: 110, y2: 20 })
+    // 90° y-down 竖直向下
+    const e90 = endFromPolar(10, 20, 100, 90)
+    expect(e90.x2).toBeCloseTo(10, 9)
+    expect(e90.y2).toBeCloseTo(120, 9)
+    // 45°
+    const e45 = endFromPolar(0, 0, 50, 45)
+    expect(e45.x2).toBeCloseTo(50 * Math.SQRT1_2, 9)
+    expect(e45.y2).toBeCloseTo(50 * Math.SQRT1_2, 9)
+    // 往返：长度与角度还原
+    const s = endFromPolar(3, 7, 80, 123.4)
+    const len = Math.hypot(s.x2 - 3, s.y2 - 7)
+    const ang = angleDegOfVector(s.x2 - 3, s.y2 - 7)
+    expect(len).toBeCloseTo(80, 9)
+    expect(ang).toBeCloseTo(123.4, 9)
   })
 })
