@@ -7,7 +7,10 @@ import {
   translatePattern,
   moveLineToSpacing,
   patternAnchor,
-  nearestForeignEndpoint
+  nearestForeignEndpoint,
+  segOrientation,
+  referenceParallel,
+  equalSpacingHint
 } from './spacing.js'
 
 /** 构造水平/竖直/斜线段 */
@@ -130,5 +133,68 @@ describe('patterns/spacing 平行线间距', () => {
     // 空/全自身
     expect(nearestForeignEndpoint(seg, [], 2)).toBeNull()
     expect(nearestForeignEndpoint(seg, [seg], 2)).toBeNull()
+  })
+
+  it('segOrientation：横/竖/斜分类', () => {
+    expect(segOrientation({ x1: 0, y1: 0, x2: 100, y2: 0 })).toBe('h')
+    expect(segOrientation({ x1: 0, y1: 0, x2: 0, y2: 100 })).toBe('v')
+    expect(segOrientation({ x1: 0, y1: 0, x2: 50, y2: 50 })).toBe('d') // 45°
+    expect(segOrientation({ x1: 0, y1: 0, x2: 100, y2: 8 })).toBe('h') // 近水平
+    expect(segOrientation({ x1: 0, y1: 0, x2: 8, y2: 100 })).toBe('v') // 近竖直
+  })
+
+  it('referenceParallel：横线取上方、竖线取左侧，斜线取最近', () => {
+    // 横线：C 在 y=0；上方邻居 A(y=-10) 与下方邻居 B(y=15) —— 应选 A（上方）
+    const C = { id: 'C', x1: 0, y1: 0, x2: 100, y2: 0 }
+    const upA = { id: 'A', x1: 0, y1: -10, x2: 100, y2: -10 }
+    const downB = { id: 'B', x1: 0, y1: 15, x2: 100, y2: 15 }
+    const r = referenceParallel(C, [C, upA, downB])
+    expect(r.other.id).toBe('A')
+    expect(r.side).toBe('up')
+    expect(r.distance).toBeCloseTo(10, 9)
+
+    // 上方无线 → null（尽管下方有）
+    const onlyDown = referenceParallel(C, [C, downB])
+    expect(onlyDown).toBeNull()
+
+    // 竖线：C 在 x=0；左侧 A(x=-8) 与右侧 B(x=20) —— 应选 A（左侧）
+    const VC = { id: 'VC', x1: 0, y1: 0, x2: 0, y2: 100 }
+    const vLeft = { id: 'VL', x1: -8, y1: 0, x2: -8, y2: 100 }
+    const vRight = { id: 'VR', x1: 20, y1: 0, x2: 20, y2: 100 }
+    const vr = referenceParallel(VC, [VC, vLeft, vRight])
+    expect(vr.other.id).toBe('VL')
+    expect(vr.side).toBe('left')
+    expect(vr.distance).toBeCloseTo(8, 9)
+
+    // 斜线 → 最近任意侧
+    const d45 = { id: 'D', x1: 0, y1: 0, x2: 100, y2: 100 }
+    const dUp = { id: 'DU', x1: 0, y1: -14, x2: 100, y2: 86 } // 平行 45°，上方
+    const dDown = { id: 'DD', x1: 0, y1: 20, x2: 100, y2: 120 } // 下方更近？垂直距离更大
+    const dr = referenceParallel(d45, [d45, dUp, dDown])
+    expect(dr.side).toBe('nearest')
+    expect(dr.other.id).toBe('DU')
+  })
+
+  it('equalSpacingHint：A/B 间距 100，C 拖到与 B 同为 100 时命中（用户场景）', () => {
+    // A(y=-100) 与 B(y=0) 平行横线，间距 100
+    const A = { id: 'A', x1: 0, y1: -100, x2: 100, y2: -100, patternId: 'PA' }
+    const B = { id: 'B', x1: 0, y1: 0, x2: 100, y2: 0, patternId: 'PB' }
+    // C 拖到 y=100 → C-B=100，命中
+    const Cok = { id: 'C', x1: 0, y1: 100, x2: 100, y2: 100, patternId: 'PC' }
+    const hit = equalSpacingHint(Cok, [A, B, Cok], { tolDeg: 1, excludePatternId: 'PC' })
+    expect(hit).not.toBeNull()
+    expect(hit.spacing).toBeCloseTo(100, 9)
+    expect(hit.referenceSpacing).toBeCloseTo(100, 9)
+    expect(hit.anchor.id).toBe('B')
+
+    // C 拖到 y=30 → C-B=30，不命中
+    const Cno = { id: 'C', x1: 0, y1: 30, x2: 100, y2: 30, patternId: 'PC' }
+    expect(equalSpacingHint(Cno, [A, B, Cno], { tolDeg: 1, excludePatternId: 'PC' })).toBeNull()
+  })
+
+  it('equalSpacingHint：无 A 参考（B 是边缘线）→ null', () => {
+    const B = { id: 'B', x1: 0, y1: 0, x2: 100, y2: 0, patternId: 'PB' }
+    const C = { id: 'C', x1: 0, y1: 100, x2: 100, y2: 100, patternId: 'PC' }
+    expect(equalSpacingHint(C, [B, C], { excludePatternId: 'PC' })).toBeNull()
   })
 })

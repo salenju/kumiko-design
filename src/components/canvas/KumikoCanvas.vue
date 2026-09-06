@@ -16,7 +16,7 @@ import { useHistoryStore } from '../../stores/history.js'
 import { useViewport } from '../../composables/useViewport.js'
 import { useSelection } from '../../composables/useSelection.js'
 import { usePatternTool } from '../../composables/usePatternTool.js'
-import { nearestParallelSegment, nearestForeignEndpoint } from '../../core/patterns/index.js'
+import { equalSpacingHint, referenceParallel } from '../../core/patterns/index.js'
 import GridLayer from './GridLayer.vue'
 import PatternLayer from './PatternLayer.vue'
 import InteractionLayer from './InteractionLayer.vue'
@@ -177,35 +177,49 @@ function updateDragHint() {
   // 其它图案的段（排除自身图案，便于找可对齐的外部端点/平行线）
   const others = project.segments.filter((s) => s.patternId !== d.patternId)
 
-  // 1) 端点重合提示：被拖线端点接近其它图案某端点（容差 = 0.5mm）
-  const END_TOL = Math.max(0.25, 3 / ui.zoom) // 屏幕约 3px
-  const endHit = nearestForeignEndpoint(rep, others, END_TOL)
-  if (endHit) {
+  // 1) 等距对齐提示：拖 C 使其与相邻线 B 的间距 ≈ B 与参考线 A 的间距
+  //    （例如 A、B 平行间距 100，C 与 B 也到 100 时高亮提示）
+  const eq = equalSpacingHint(rep, others, { tolDeg: 1 })
+  const mx = (rep.x1 + rep.x2) / 2
+  const my = (rep.y1 + rep.y2) / 2
+  if (eq) {
+    const angle = Math.atan2(rep.y2 - rep.y1, rep.x2 - rep.x1)
+    const offset = 16 / ui.zoom
+    const which = segOrientationOf(rep)
+    const sideTxt = which === 'h' ? '水平' : which === 'v' ? '竖直' : ''
     dragHint.value = {
-      x: endHit.x,
-      y: endHit.y,
-      text: '端点已对齐',
-      kind: 'endpoint'
+      x: mx + Math.cos(angle + Math.PI / 2) * offset,
+      y: my + Math.sin(angle + Math.PI / 2) * offset,
+      text: `${sideTxt}间距与相邻线一致 ${eq.spacing.toFixed(1)} mm`,
+      kind: 'equal'
     }
     return
   }
 
-  // 2) 相邻平行线间距提示
-  const near = nearestParallelSegment(rep, others, { tolDeg: 1 })
-  const mx = (rep.x1 + rep.x2) / 2
-  const my = (rep.y1 + rep.y2) / 2
+  // 2) 相邻平行线间距提示（与属性面板一致：横线=上方、竖线=左侧为基准）
+  const near = referenceParallel(rep, others, { tolDeg: 1 })
   if (near) {
     const angle = Math.atan2(rep.y2 - rep.y1, rep.x2 - rep.x1)
     const offset = 14 / ui.zoom
+    const label = near.side === 'up' ? '与上方相邻线间距' : near.side === 'left' ? '与左侧相邻线间距' : '相邻平行线间距'
     dragHint.value = {
       x: mx + Math.cos(angle + Math.PI / 2) * offset,
       y: my + Math.sin(angle + Math.PI / 2) * offset,
-      text: `相邻平行线间距 ${near.distance.toFixed(1)} mm`,
+      text: `${label} ${near.distance.toFixed(1)} mm`,
       kind: 'spacing'
     }
   } else {
-    dragHint.value = { x: mx, y: my - 12 / ui.zoom, text: '无可比相邻平行线', kind: 'spacing' }
+    dragHint.value = { x: mx, y: my - 12 / ui.zoom, text: '基准方向无相邻平行线', kind: 'spacing' }
   }
+}
+
+/** 拖拽代表段的主方向（横/竖/斜），用于提示文案 */
+function segOrientationOf(seg) {
+  const dx = Math.abs(seg.x2 - seg.x1)
+  const dy = Math.abs(seg.y2 - seg.y1)
+  if (dy <= dx * 0.15) return 'h'
+  if (dx <= dy * 0.15) return 'v'
+  return 'd'
 }
 
 function onPointerUp(e) {

@@ -140,8 +140,114 @@ export function moveLineToSpacing(pattern, refSeg, targetSpacing) {
   return translatePattern(pattern, move * ndx, move * ndy)
 }
 
-/** 图案参考锚点：line 用起点；family 用 ref。 */
-export function patternAnchor(pattern) {
+/**
+ * 线段方向分类：
+ *   'h' —— 水平（主方向沿 x，|dy| ≤ |dx|*0.15）
+ *   'v' —— 竖直（|dx| ≤ |dy|*0.15）
+ *   'd' —— 斜线（其余，如 30/45/60° 纹样）
+ */
+export function segOrientation(seg) {
+  const dx = Math.abs(seg.x2 - seg.x1)
+  const dy = Math.abs(seg.y2 - seg.y1)
+  if (dy <= dx * 0.15) return 'h'
+  if (dx <= dy * 0.15) return 'v'
+  return 'd'
+}
+
+/**
+ * 按「相邻线间距」基准规则查找参考平行线：
+ *   横线 → 以【上方】相邻平行线为基准；竖线 → 以【左侧】相邻平行线为基准；
+ *   斜线 → 回退为任意侧最近的平行线。
+ * 基准侧若不存在平行线（例如线在最上方/最左侧），返回 null（面板应禁用调整）。
+ * @returns {{other:object, distance:number, side:'up'|'left'|'nearest'}|null}
+ */
+export function referenceParallel(seg, candidates, opts = {}) {
+  const tolDeg = opts.tolDeg ?? 1
+  const excludeId = opts.excludeId ?? seg.id
+  const baseAngle = seg.angleDeg ?? segAngleDeg(seg)
+  const orientation = segOrientation(seg)
+  const mx = (seg.x1 + seg.x2) / 2
+  const my = (seg.y1 + seg.y2) / 2
+  const baseLine = { x: seg.x1, y: seg.y1, dx: seg.x2 - seg.x1, dy: seg.y2 - seg.y1 }
+
+  // 过滤平行候选
+  const parallel = []
+  for (const other of candidates || []) {
+    if (!other || other.id === excludeId) continue
+    const oAngle = other.angleDeg ?? segAngleDeg(other)
+    if (isParallelDeg(baseAngle, oAngle, tolDeg)) parallel.push(other)
+  }
+
+  // 横/竖：只取基准侧（上方 ocy<my / 左侧 ocx<mx），取垂直距离最小者
+  if (orientation === 'h' || orientation === 'v') {
+    let best = null
+    let bestDist = Infinity
+    for (const other of parallel) {
+      const ocx = (other.x1 + other.x2) / 2
+      const ocy = (other.y1 + other.y2) / 2
+      const onSide = orientation === 'h' ? ocy < my - 1e-9 : ocx < mx - 1e-9
+      if (!onSide) continue
+      const d = distPointLine(other.x1, other.y1, baseLine)
+      if (d < bestDist) {
+        bestDist = d
+        best = other
+      }
+    }
+    if (!best) return null
+    return { other: best, distance: bestDist, side: orientation === 'h' ? 'up' : 'left' }
+  }
+
+  // 斜线：任意侧最近
+  let anyBest = null
+  let anyBestDist = Infinity
+  for (const other of parallel) {
+    const d = distPointLine(other.x1, other.y1, baseLine)
+    if (d < anyBestDist) {
+      anyBestDist = d
+      anyBest = other
+    }
+  }
+  if (!anyBest) return null
+  return { other: anyBest, distance: anyBestDist, side: 'nearest' }
+}
+
+/**
+ * 等距对齐检测（用户场景：A、B 平行间距 D；拖动第三条平行线 C，
+ * 当 C 与相邻线 B 的间距也 ≈ D 时给出提示）。
+ *
+ * 规则：找 C 的最近平行邻居 B；再找 B 的最近平行邻居 A（排除 C 本身及其所属图案），
+ * 若 spacing(C,B) ≈ spacing(B,A)（容差内）则返回提示信息。
+ * @param {object} seg 被拖线段（C）
+ * @param {Array} candidates 全部候选段（含 C 所属图案的段）
+ * @param {object} [opts] { tolDeg=1, absTol=0.5, relTol=0.02, excludePatternId }
+ * @returns {{reference:object, anchor:object, spacing, referenceSpacing}|null}
+ */
+export function equalSpacingHint(seg, candidates, opts = {}) {
+  const absTol = opts.absTol ?? 0.5
+  const relTol = opts.relTol ?? 0.02
+  // C 的最近平行邻居 B（任意侧，取垂直距离最小）
+  const B = nearestParallelSegment(seg, candidates, { tolDeg: opts.tolDeg ?? 1 })
+  if (!B) return null
+  // B 的最近平行邻居 A：排除 C（seg.id）与同图案的段，避免把 C 当参考
+  const excludePattern = opts.excludePatternId
+  const forA = (candidates || []).filter(
+    (c) => c && c.id !== seg.id && (!excludePattern || c.patternId !== excludePattern)
+  )
+  const A = nearestParallelSegment(B.other, forA, { tolDeg: opts.tolDeg ?? 1 })
+  if (!A) return null
+  const spacingCB = B.distance
+  const spacingBA = A.distance
+  const tol = Math.max(absTol, spacingBA * relTol, spacingCB * relTol)
+  if (Math.abs(spacingCB - spacingBA) > tol) return null
+  return {
+    reference: A.other, // A（参考系）
+    anchor: B.other, // B（被拖线的相邻线）
+    spacing: spacingCB,
+    referenceSpacing: spacingBA
+  }
+}
+
+/** 图案参考锚点：line 用起点；family 用 ref。 */export function patternAnchor(pattern) {
   if (pattern.kind === 'line') return { x: pattern.x1, y: pattern.y1 }
   if (pattern.kind === 'family') return { x: pattern.ref.x, y: pattern.ref.y }
   return { x: 0, y: 0 }

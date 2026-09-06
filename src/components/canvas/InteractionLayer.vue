@@ -136,18 +136,10 @@ const lineDraftInfo = computed(() => {
 
     <!-- 拖拽中的提示 -->
     <g v-if="dragHint" style="pointer-events: none">
-      <!-- 端点对齐标记：绿色十字 -->
-      <template v-if="dragHint.kind === 'endpoint'">
-        <circle
-          :cx="dragHint.x"
-          :cy="dragHint.y"
-          :r="4.5 / zoom"
-          fill="none"
-          stroke="#2e9e5b"
-          :stroke-width="1.4 / zoom"
-        />
-        <line :x1="dragHint.x - 8 / zoom" :y1="dragHint.y" :x2="dragHint.x + 8 / zoom" :y2="dragHint.y" stroke="#2e9e5b" :stroke-width="1.2 / zoom" />
-        <line :x1="dragHint.x" :y1="dragHint.y - 8 / zoom" :x2="dragHint.x" :y2="dragHint.y + 8 / zoom" stroke="#2e9e5b" :stroke-width="1.2 / zoom" />
+      <!-- 等距对齐标记：金色双横线 -->
+      <template v-if="dragHint.kind === 'equal'">
+        <line :x1="dragHint.x - 9 / zoom" :y1="dragHint.y - 3 / zoom" :x2="dragHint.x + 9 / zoom" :y2="dragHint.y - 3 / zoom" stroke="#c2760a" :stroke-width="1.6 / zoom" />
+        <line :x1="dragHint.x - 9 / zoom" :y1="dragHint.y + 3 / zoom" :x2="dragHint.x + 9 / zoom" :y2="dragHint.y + 3 / zoom" stroke="#c2760a" :stroke-width="1.6 / zoom" />
       </template>
       <rect
         :x="dragHint.x"
@@ -155,15 +147,15 @@ const lineDraftInfo = computed(() => {
         :width="dragHint.text.length * 6.2 / zoom + 8 / zoom"
         :height="16 / zoom"
         rx="3 / zoom"
-        :fill="dragHint.kind === 'endpoint' ? 'rgba(235,250,240,0.95)' : 'rgba(255,247,224,0.92)'"
-        :stroke="dragHint.kind === 'endpoint' ? '#2e9e5b' : '#d4a017'"
-        :stroke-width="1 / zoom"
+        :fill="dragHint.kind === 'equal' ? 'rgba(255,244,214,0.96)' : dragHint.kind === 'spacing' ? 'rgba(255,247,224,0.92)' : 'rgba(235,250,240,0.95)'"
+        :stroke="dragHint.kind === 'equal' ? '#c2760a' : dragHint.kind === 'spacing' ? '#d4a017' : '#2e9e5b'"
+        :stroke-width="dragHint.kind === 'equal' ? 1.4 / zoom : 1 / zoom"
       />
       <text
         :x="dragHint.x + 4 / zoom"
         :y="dragHint.y - 6 / zoom"
         :font-size="10 / zoom"
-        :fill="dragHint.kind === 'endpoint' ? '#1e6b3d' : '#7a5b00'"
+        :fill="dragHint.kind === 'equal' ? '#8a5208' : dragHint.kind === 'spacing' ? '#7a5b00' : '#1e6b3d'"
       >
         {{ dragHint.text }}
       </text>
