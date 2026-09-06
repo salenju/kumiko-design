@@ -7,7 +7,7 @@ import { computed } from 'vue'
 const props = defineProps({
   rubber: { type: Object, default: null }, // {x1,y1,x2,y2} mm
   draft: { type: Object, default: null }, // {kind:'family'|'line', ...}
-  dragHint: { type: Object, default: null }, // {x,y,text} 拖拽中的间距提示
+  dragHints: { type: Array, default: () => [] }, // [{x,y,text,kind}] 拖拽提示（端点/等距/间距）
   zoom: { type: Number, required: true }
 })
 
@@ -134,30 +134,37 @@ const lineDraftInfo = computed(() => {
       </text>
     </template>
 
-    <!-- 拖拽中的提示 -->
-    <g v-if="dragHint" style="pointer-events: none">
-      <!-- 等距对齐标记：金色双横线 -->
-      <template v-if="dragHint.kind === 'equal'">
-        <line :x1="dragHint.x - 9 / zoom" :y1="dragHint.y - 3 / zoom" :x2="dragHint.x + 9 / zoom" :y2="dragHint.y - 3 / zoom" stroke="#c2760a" :stroke-width="1.6 / zoom" />
-        <line :x1="dragHint.x - 9 / zoom" :y1="dragHint.y + 3 / zoom" :x2="dragHint.x + 9 / zoom" :y2="dragHint.y + 3 / zoom" stroke="#c2760a" :stroke-width="1.6 / zoom" />
+    <!-- 拖拽中的提示（多条可并存，纵向错开） -->
+    <g v-for="(hint, hi) in dragHints" :key="hi" style="pointer-events: none">
+      <template v-if="hint.kind === 'equal'">
+        <!-- 等距对齐：绿色双线 -->
+        <line :x1="hint.x - 9 / zoom" :y1="hint.y - 3 / zoom" :x2="hint.x + 9 / zoom" :y2="hint.y - 3 / zoom" stroke="#2e9e5b" :stroke-width="1.6 / zoom" />
+        <line :x1="hint.x - 9 / zoom" :y1="hint.y + 3 / zoom" :x2="hint.x + 9 / zoom" :y2="hint.y + 3 / zoom" stroke="#2e9e5b" :stroke-width="1.6 / zoom" />
       </template>
+      <template v-else-if="hint.kind === 'endpoint'">
+        <!-- 端点对齐：蓝色十字 -->
+        <circle :cx="hint.x" :cy="hint.y" :r="4.5 / zoom" fill="none" stroke="#2f6fd0" :stroke-width="1.4 / zoom" />
+        <line :x1="hint.x - 8 / zoom" :y1="hint.y" :x2="hint.x + 8 / zoom" :y2="hint.y" stroke="#2f6fd0" :stroke-width="1.2 / zoom" />
+        <line :x1="hint.x" :y1="hint.y - 8 / zoom" :x2="hint.x" :y2="hint.y + 8 / zoom" stroke="#2f6fd0" :stroke-width="1.2 / zoom" />
+      </template>
+      <!-- 气泡（多个时纵向错开 22px 屏幕） -->
       <rect
-        :x="dragHint.x"
-        :y="dragHint.y - 18 / zoom"
-        :width="dragHint.text.length * 6.2 / zoom + 8 / zoom"
+        :x="hint.x"
+        :y="hint.y - 18 / zoom - hi * 22 / zoom"
+        :width="hint.text.length * 6.2 / zoom + 8 / zoom"
         :height="16 / zoom"
         rx="3 / zoom"
-        :fill="dragHint.kind === 'equal' ? 'rgba(255,244,214,0.96)' : dragHint.kind === 'spacing' ? 'rgba(255,247,224,0.92)' : 'rgba(235,250,240,0.95)'"
-        :stroke="dragHint.kind === 'equal' ? '#c2760a' : dragHint.kind === 'spacing' ? '#d4a017' : '#2e9e5b'"
-        :stroke-width="dragHint.kind === 'equal' ? 1.4 / zoom : 1 / zoom"
+        :fill="hint.kind === 'equal' ? 'rgba(232,246,238,0.97)' : hint.kind === 'endpoint' ? 'rgba(235,242,255,0.97)' : 'rgba(255,247,224,0.92)'"
+        :stroke="hint.kind === 'equal' ? '#2e9e5b' : hint.kind === 'endpoint' ? '#2f6fd0' : '#d4a017'"
+        :stroke-width="1 / zoom"
       />
       <text
-        :x="dragHint.x + 4 / zoom"
-        :y="dragHint.y - 6 / zoom"
+        :x="hint.x + 4 / zoom"
+        :y="hint.y - 6 / zoom - hi * 22 / zoom"
         :font-size="10 / zoom"
-        :fill="dragHint.kind === 'equal' ? '#8a5208' : dragHint.kind === 'spacing' ? '#7a5b00' : '#1e6b3d'"
+        :fill="hint.kind === 'equal' ? '#1e6b3d' : hint.kind === 'endpoint' ? '#1f4e9c' : '#7a5b00'"
       >
-        {{ dragHint.text }}
+        {{ hint.text }}
       </text>
     </g>
   </g>

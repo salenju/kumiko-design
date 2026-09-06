@@ -10,7 +10,8 @@ import {
   nearestForeignEndpoint,
   segOrientation,
   referenceParallel,
-  equalSpacingHint
+  equalSpacingHint,
+  parallelEndpointAlign
 } from './spacing.js'
 
 /** 构造水平/竖直/斜线段 */
@@ -196,5 +197,40 @@ describe('patterns/spacing 平行线间距', () => {
     const B = { id: 'B', x1: 0, y1: 0, x2: 100, y2: 0, patternId: 'PB' }
     const C = { id: 'C', x1: 0, y1: 100, x2: 100, y2: 100, patternId: 'PC' }
     expect(equalSpacingHint(C, [B, C], { excludePatternId: 'PC' })).toBeNull()
+  })
+
+  it('parallelEndpointAlign：横线左/右端与基准线平齐时提示', () => {
+    // C 在 y=0；基准 B 在 y=-100（上方），B 两端 x=-60..60
+    const B = { id: 'B', x1: -60, y1: -100, x2: 60, y2: -100, patternId: 'PB' }
+    // C 左端 x 与 B 左端同为 -60 → min 对齐
+    const CalignL = { id: 'C', x1: -60, y1: 0, x2: 20, y2: 0, patternId: 'PC' }
+    const r1 = parallelEndpointAlign(CalignL, [B, CalignL], { tol: 0.5 })
+    expect(r1.aligned).toBe(true)
+    expect(r1.sideOfBase).toBe('up')
+    expect(r1.end).toBe('min')
+
+    // C 右端 x 与 B 右端同为 60 → max 对齐
+    const CalignR = { id: 'C', x1: -20, y1: 0, x2: 60, y2: 0, patternId: 'PC' }
+    const r2 = parallelEndpointAlign(CalignR, [B, CalignR], { tol: 0.5 })
+    expect(r2.aligned).toBe(true)
+    expect(r2.end).toBe('max')
+
+    // C 两端都不对齐 → aligned false
+    const Cmis = { id: 'C', x1: -30, y1: 0, x2: 10, y2: 0, patternId: 'PC' }
+    const r3 = parallelEndpointAlign(Cmis, [B, Cmis], { tol: 0.5 })
+    expect(r3.aligned).toBe(false)
+
+    // 上方无基准线 → null
+    expect(parallelEndpointAlign(B, [B], { tol: 0.5 })).toBeNull()
+  })
+
+  it('parallelEndpointAlign：竖线对比上/下端 y（基准=左侧）', () => {
+    const B = { id: 'B', x1: -100, y1: -50, x2: -100, y2: 50, patternId: 'PB' }
+    // C 在 x=0（右侧），上端 y 与 B 上端 -50 相同 → min（y 小=上端）
+    const CalignT = { id: 'C', x1: 0, y1: -50, x2: 0, y2: 20, patternId: 'PC' }
+    const r = parallelEndpointAlign(CalignT, [B, CalignT], { tol: 0.5 })
+    expect(r.aligned).toBe(true)
+    expect(r.sideOfBase).toBe('left')
+    expect(r.end).toBe('min')
   })
 })

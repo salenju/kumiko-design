@@ -215,25 +215,26 @@ export function referenceParallel(seg, candidates, opts = {}) {
  * 等距对齐检测（用户场景：A、B 平行间距 D；拖动第三条平行线 C，
  * 当 C 与相邻线 B 的间距也 ≈ D 时给出提示）。
  *
- * 规则：找 C 的最近平行邻居 B；再找 B 的最近平行邻居 A（排除 C 本身及其所属图案），
+ * 规则（与属性面板基准一致）：先取 C 的基准参考线 B
+ * （横线=上方相邻线、竖线=左侧相邻线、斜线=最近），
+ * 再取 B 在【同方向基准侧】的参考线 A（排除 C 本身及其所属图案），
  * 若 spacing(C,B) ≈ spacing(B,A)（容差内）则返回提示信息。
  * @param {object} seg 被拖线段（C）
- * @param {Array} candidates 全部候选段（含 C 所属图案的段）
- * @param {object} [opts] { tolDeg=1, absTol=0.5, relTol=0.02, excludePatternId }
- * @returns {{reference:object, anchor:object, spacing, referenceSpacing}|null}
+ * @param {Array} candidates 候选段（不含 C 所属图案时传 []）
+ * @param {object} [opts] { tolDeg=1, absTol=0.5, relTol=0.02 }
+ * @returns {{reference:object, anchor:object, spacing, referenceSpacing, side}|null}
  */
 export function equalSpacingHint(seg, candidates, opts = {}) {
   const absTol = opts.absTol ?? 0.5
   const relTol = opts.relTol ?? 0.02
-  // C 的最近平行邻居 B（任意侧，取垂直距离最小）
-  const B = nearestParallelSegment(seg, candidates, { tolDeg: opts.tolDeg ?? 1 })
+  // C 的基准参考线 B（上方/左侧）
+  const B = referenceParallel(seg, candidates, { tolDeg: opts.tolDeg ?? 1 })
   if (!B) return null
-  // B 的最近平行邻居 A：排除 C（seg.id）与同图案的段，避免把 C 当参考
-  const excludePattern = opts.excludePatternId
+  // B 的参考线 A：同样沿基准方向，且排除 C 本身
   const forA = (candidates || []).filter(
-    (c) => c && c.id !== seg.id && (!excludePattern || c.patternId !== excludePattern)
+    (c) => c && c.id !== seg.id && c.patternId !== seg.patternId
   )
-  const A = nearestParallelSegment(B.other, forA, { tolDeg: opts.tolDeg ?? 1 })
+  const A = referenceParallel(B.other, forA, { tolDeg: opts.tolDeg ?? 1 })
   if (!A) return null
   const spacingCB = B.distance
   const spacingBA = A.distance
@@ -241,10 +242,46 @@ export function equalSpacingHint(seg, candidates, opts = {}) {
   if (Math.abs(spacingCB - spacingBA) > tol) return null
   return {
     reference: A.other, // A（参考系）
-    anchor: B.other, // B（被拖线的相邻线）
+    anchor: B.other, // B（被拖线的基准相邻线）
     spacing: spacingCB,
-    referenceSpacing: spacingBA
+    referenceSpacing: spacingBA,
+    side: B.side // 基准方向：up | left | nearest
   }
+}
+
+/**
+ * 端点平齐检测：被拖线 C 的端点与基准参考线 B 的端点，
+ * 沿线段主方向坐标对齐（横线比 x、竖线比 y，各自 min/max 端对齐）。
+ * 用于横线/竖线「左/右端、上/下端与相邻线对齐」提示。
+ * @param {object} seg 被拖线段（C）
+ * @param {Array} candidates 候选段
+ * @param {object} [opts] { tol=0.5, tolDeg=1 }
+ * @returns {{aligned:boolean, sideOfBase:'up'|'left'|'nearest', end:'min'|'max', other:object}|null}
+ *   null 表示该方向无基准参考线（不提示）。
+ */
+export function parallelEndpointAlign(seg, candidates, opts = {}) {
+  const tol = opts.tol ?? 0.5
+  const base = referenceParallel(seg, candidates, { tolDeg: opts.tolDeg ?? 1 })
+  if (!base) return null
+  const o = segOrientation(seg)
+  if (o === 'd') return { aligned: false } // 斜线不做端点平齐（端头多为斜切）
+  const key = o === 'h' ? 'x' : 'y'
+  // 两端主坐标
+  const c1 = seg[key + '1']
+  const c2 = seg[key + '2']
+  const b1 = base.other[key + '1']
+  const b2 = base.other[key + '2']
+  const cMin = Math.min(c1, c2)
+  const cMax = Math.max(c1, c2)
+  const bMin = Math.min(b1, b2)
+  const bMax = Math.max(b1, b2)
+  if (Math.abs(cMin - bMin) <= tol) {
+    return { aligned: true, sideOfBase: base.side, end: 'min', other: base.other, gap: cMin - bMin }
+  }
+  if (Math.abs(cMax - bMax) <= tol) {
+    return { aligned: true, sideOfBase: base.side, end: 'max', other: base.other, gap: cMax - bMax }
+  }
+  return { aligned: false, sideOfBase: base.side, other: base.other }
 }
 
 /** 图案参考锚点：line 用起点；family 用 ref。 */export function patternAnchor(pattern) {

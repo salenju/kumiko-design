@@ -217,8 +217,8 @@ function onLineSpacingChange(p, e) {
         <template v-if="p.kind === 'line'">
           <div class="pp-sub">起点（编辑时保持不动）</div>
           <div class="pp-bounds">
-            <div class="pp-field half"><label>X1</label><input type="number" step="1" :value="p.x1" @focus="onFieldFocus" @change="onFieldChange" @input="updatePattern(p.id, { x1: Number($event.target.value) })" /></div>
-            <div class="pp-field half"><label>Y1</label><input type="number" step="1" :value="p.y1" @focus="onFieldFocus" @change="onFieldChange" @input="updatePattern(p.id, { y1: Number($event.target.value) })" /></div>
+            <div class="pp-field half"><label>X1</label><input type="number" step="0.1" :value="p.x1" @focus="onFieldFocus" @change="onFieldChange" @input="updatePattern(p.id, { x1: Number($event.target.value) })" /></div>
+            <div class="pp-field half"><label>Y1</label><input type="number" step="0.1" :value="p.y1" @focus="onFieldFocus" @change="onFieldChange" @input="updatePattern(p.id, { y1: Number($event.target.value) })" /></div>
           </div>
           <div class="pp-sub">长度与角度（由起点指向终点）</div>
           <div class="pp-field">
@@ -262,8 +262,8 @@ function onLineSpacingChange(p, e) {
           <div class="pp-hint2">{{ adjacentHint(p) }}；输入目标间距回车/失焦后本线沿基准线法向移动至该间距（保持在基准线的同一侧）。</div>
           <div class="pp-sub">终点（微调）</div>
           <div class="pp-bounds">
-            <div class="pp-field half"><label>X2</label><input type="number" step="1" :value="p.x2" @focus="onFieldFocus" @change="onFieldChange" @input="updatePattern(p.id, { x2: Number($event.target.value) })" /></div>
-            <div class="pp-field half"><label>Y2</label><input type="number" step="1" :value="p.y2" @focus="onFieldFocus" @change="onFieldChange" @input="updatePattern(p.id, { y2: Number($event.target.value) })" /></div>
+            <div class="pp-field half"><label>X2</label><input type="number" step="0.1" :value="p.x2" @focus="onFieldFocus" @change="onFieldChange" @input="updatePattern(p.id, { x2: Number($event.target.value) })" /></div>
+            <div class="pp-field half"><label>Y2</label><input type="number" step="0.1" :value="p.y2" @focus="onFieldFocus" @change="onFieldChange" @input="updatePattern(p.id, { y2: Number($event.target.value) })" /></div>
           </div>
           <div class="pp-field">
             <label>木条宽 mm</label>

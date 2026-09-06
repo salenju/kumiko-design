@@ -16,7 +16,7 @@ import { useHistoryStore } from '../../stores/history.js'
 import { useViewport } from '../../composables/useViewport.js'
 import { useSelection } from '../../composables/useSelection.js'
 import { usePatternTool } from '../../composables/usePatternTool.js'
-import { equalSpacingHint, referenceParallel } from '../../core/patterns/index.js'
+import { equalSpacingHint, parallelEndpointAlign, referenceParallel } from '../../core/patterns/index.js'
 import GridLayer from './GridLayer.vue'
 import PatternLayer from './PatternLayer.vue'
 import InteractionLayer from './InteractionLayer.vue'
@@ -51,7 +51,7 @@ const mode = computed(() => ui.tool)
 
 // —— 线段拖拽状态（select 工具） ——
 const segDrag = ref(null) // { patternId, seg, snapBefore, lastWorld }
-const dragHint = ref(null) // { x, y, text } 拖拽中的间距提示（世界坐标）
+const dragHints = ref([]) // [{ x, y, text, kind }] 拖拽中的提示（世界坐标）
 
 const DRAG_THRESHOLD_PX = 4 // 判定为拖拽的屏幕像素阈值
 
@@ -171,45 +171,65 @@ function updateDragHint() {
     if (first) rep = first
   }
   if (!rep) {
-    dragHint.value = null
+    dragHints.value = []
     return
   }
   // 其它图案的段（排除自身图案，便于找可对齐的外部端点/平行线）
   const others = project.segments.filter((s) => s.patternId !== d.patternId)
 
-  // 1) 等距对齐提示：拖 C 使其与相邻线 B 的间距 ≈ B 与参考线 A 的间距
-  //    （例如 A、B 平行间距 100，C 与 B 也到 100 时高亮提示）
-  const eq = equalSpacingHint(rep, others, { tolDeg: 1 })
   const mx = (rep.x1 + rep.x2) / 2
   const my = (rep.y1 + rep.y2) / 2
+  const ang = Math.atan2(rep.y2 - rep.y1, rep.x2 - rep.x1)
+  const dirName = segOrientationOf(rep) === 'h' ? '横线' : segOrientationOf(rep) === 'v' ? '竖线' : '线'
+  const hints = []
+
+  // 1) 端点/顶点对齐提示（横线比左/右端 x、竖线比上/下端 y，与基准相邻线齐平）
+  const ep = parallelEndpointAlign(rep, others, { tol: Math.max(0.4, 2.5 / ui.zoom), tolDeg: 1 })
+  if (ep && ep.aligned) {
+    const endX = ep.end === 'min' ? Math.min(rep.x1, rep.x2) : Math.max(rep.x1, rep.x2)
+    const endY = ep.end === 'min' ? Math.min(rep.y1, rep.y2) : Math.max(rep.y1, rep.y2)
+    const whichEnd = dirName === '横线' ? (ep.end === 'min' ? '左端' : '右端') : dirName === '竖线' ? (ep.end === 'min' ? '上端' : '下端') : ''
+    hints.push({
+      x: endX,
+      y: endY,
+      text: `端点与相邻线${whichEnd}对齐`,
+      kind: 'endpoint'
+    })
+  }
+
+  // 2) 等距对齐提示（拖 C 使其与基准相邻线 B 的间距 ≈ B 与参考线 A 的间距）
+  const eq = equalSpacingHint(rep, others, { tolDeg: 1 })
   if (eq) {
-    const angle = Math.atan2(rep.y2 - rep.y1, rep.x2 - rep.x1)
-    const offset = 16 / ui.zoom
-    const which = segOrientationOf(rep)
-    const sideTxt = which === 'h' ? '水平' : which === 'v' ? '竖直' : ''
-    dragHint.value = {
-      x: mx + Math.cos(angle + Math.PI / 2) * offset,
-      y: my + Math.sin(angle + Math.PI / 2) * offset,
-      text: `${sideTxt}间距与相邻线一致 ${eq.spacing.toFixed(1)} mm`,
+    const offset = 18 / ui.zoom
+    const sideTxt = eq.side === 'up' ? '上方相邻线' : eq.side === 'left' ? '左侧相邻线' : '相邻线'
+    hints.push({
+      x: mx + Math.cos(ang + Math.PI / 2) * offset,
+      y: my + Math.sin(ang + Math.PI / 2) * offset,
+      text: `${dirName}间距与${sideTxt}一致 ${eq.spacing.toFixed(1)} mm`,
       kind: 'equal'
-    }
+    })
+  }
+
+  if (hints.length) {
+    dragHints.value = hints
     return
   }
 
-  // 2) 相邻平行线间距提示（与属性面板一致：横线=上方、竖线=左侧为基准）
+  // 3) 仅普通间距提示
   const near = referenceParallel(rep, others, { tolDeg: 1 })
   if (near) {
-    const angle = Math.atan2(rep.y2 - rep.y1, rep.x2 - rep.x1)
     const offset = 14 / ui.zoom
     const label = near.side === 'up' ? '与上方相邻线间距' : near.side === 'left' ? '与左侧相邻线间距' : '相邻平行线间距'
-    dragHint.value = {
-      x: mx + Math.cos(angle + Math.PI / 2) * offset,
-      y: my + Math.sin(angle + Math.PI / 2) * offset,
-      text: `${label} ${near.distance.toFixed(1)} mm`,
-      kind: 'spacing'
-    }
+    dragHints.value = [
+      {
+        x: mx + Math.cos(ang + Math.PI / 2) * offset,
+        y: my + Math.sin(ang + Math.PI / 2) * offset,
+        text: `${label} ${near.distance.toFixed(1)} mm`,
+        kind: 'spacing'
+      }
+    ]
   } else {
-    dragHint.value = { x: mx, y: my - 12 / ui.zoom, text: '基准方向无相邻平行线', kind: 'spacing' }
+    dragHints.value = [{ x: mx, y: my - 12 / ui.zoom, text: '基准方向无相邻平行线', kind: 'spacing' }]
   }
 }
 
@@ -240,7 +260,7 @@ function onPointerUp(e) {
   if (segDrag.value) {
     const d = segDrag.value
     segDrag.value = null
-    dragHint.value = null
+    dragHints.value = []
     if (d.active) {
       // 拖拽结束：若数据变化则记一次撤销
       if (project.snapshot() !== d.snapBefore) history.push(d.snapBefore)
@@ -315,7 +335,7 @@ onMounted(() => {
         :labels-enabled="ui.labelsEnabled"
         :zoom="ui.zoom"
       />
-      <InteractionLayer :rubber="rubber" :draft="ui.draft" :drag-hint="dragHint" :zoom="ui.zoom" />
+      <InteractionLayer :rubber="rubber" :draft="ui.draft" :drag-hints="dragHints" :zoom="ui.zoom" />
     </svg>
   </div>
 </template>
