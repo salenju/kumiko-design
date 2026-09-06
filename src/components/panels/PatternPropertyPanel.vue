@@ -354,13 +354,15 @@ function onLineSpacingChange(p, e) {
 .mini-btn { border: 1px solid var(--kd-border); background: #fff; border-radius: 5px; cursor: pointer; padding: 2px 6px; font-size: 12px; }
 .mini-btn:hover { background: #eef0f5; }
 .mini-btn.danger:hover { background: #fdeceb; }
-.pp-field { display: flex; align-items: center; gap: 6px; margin-bottom: 5px; }
-.pp-field label { width: 70px; font-size: 12px; color: #555; flex: none; }
-.pp-field.half label { width: 26px; }
-.pp-field input { flex: 1; border: 1px solid #cfd4dd; border-radius: 5px; padding: 3px 6px; font-size: 13px; width: 0; min-width: 0; }
+/* 输入项统一为「上下结构」：上方 label、下方输入框（全原生 input，未用 naive-ui） */
+.pp-field { display: flex; flex-direction: column; gap: 3px; margin-bottom: 8px; }
+.pp-field label { font-size: 12px; color: #555; }
+.pp-field.half label { width: auto; }
+.pp-field input { width: 100%; border: 1px solid #cfd4dd; border-radius: 5px; padding: 4px 6px; font-size: 13px; box-sizing: border-box; }
 .pp-field input:focus { outline: 2px solid #b7cdf0; border-color: #2f6fd0; }
-.pp-bounds { display: flex; flex-wrap: wrap; gap: 4px; }
-.pp-bounds .pp-field.half { width: 48%; }
+.pp-bounds { display: flex; flex-wrap: wrap; gap: 0 8px; }
+.pp-bounds .pp-field.half { width: calc(50% - 4px); }
+.pp-bounds .pp-field.half input { width: 100%; }
 .pp-sub { font-size: 12px; color: #888; margin: 6px 0 4px; }
 .pp-hint2 { font-size: 11px; color: #9a9a9a; margin: 2px 0 6px; line-height: 1.4; }
 .pp-stats { font-size: 12px; color: #666; margin-top: 6px; }
