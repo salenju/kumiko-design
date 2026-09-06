@@ -148,6 +148,40 @@ export function patternAnchor(pattern) {
 }
 
 /**
+ * 找与某线段的端点最接近的其它线段端点（端点捕捉提示用）。
+ * @param {object} seg 被拖线段 {x1,y1,x2,y2}
+ * @param {Array} candidates 候选线段（将排除与 seg 相同 id 者）
+ * @param {number} [tol=2] 容差 mm
+ * @returns {{x,y,other,ownKey:'x1'|'x2',distance:number}|null} 最近的外部端点；超过容差返回 null
+ */
+export function nearestForeignEndpoint(seg, candidates, tol = 2) {
+  const own = [
+    { key: 'x1', x: seg.x1, y: seg.y1 },
+    { key: 'x2', x: seg.x2, y: seg.y2 }
+  ]
+  let best = null
+  let bestDist = Infinity
+  for (const other of candidates || []) {
+    if (!other || other.id === seg.id) continue
+    const others = [
+      { x: other.x1, y: other.y1 },
+      { x: other.x2, y: other.y2 }
+    ]
+    for (const pt of own) {
+      for (const op of others) {
+        const d = Math.hypot(op.x - pt.x, op.y - pt.y)
+        if (d < bestDist) {
+          bestDist = d
+          best = { x: op.x, y: op.y, other, ownKey: pt.key, distance: d }
+        }
+      }
+    }
+  }
+  if (!best || bestDist > tol) return null
+  return best
+}
+
+/**
  * 通用「按相邻平行线间距移动图案」：
  * 以图案锚点在参考线法向的带符号距离为当前间距，整体平移图案使锚点
  * 到参考线(所在无限直线)的垂直距离 = targetSpacing（保持所在侧）。

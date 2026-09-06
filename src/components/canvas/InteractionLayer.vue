@@ -134,23 +134,36 @@ const lineDraftInfo = computed(() => {
       </text>
     </template>
 
-    <!-- 拖拽中的间距提示 -->
+    <!-- 拖拽中的提示 -->
     <g v-if="dragHint" style="pointer-events: none">
+      <!-- 端点对齐标记：绿色十字 -->
+      <template v-if="dragHint.kind === 'endpoint'">
+        <circle
+          :cx="dragHint.x"
+          :cy="dragHint.y"
+          :r="4.5 / zoom"
+          fill="none"
+          stroke="#2e9e5b"
+          :stroke-width="1.4 / zoom"
+        />
+        <line :x1="dragHint.x - 8 / zoom" :y1="dragHint.y" :x2="dragHint.x + 8 / zoom" :y2="dragHint.y" stroke="#2e9e5b" :stroke-width="1.2 / zoom" />
+        <line :x1="dragHint.x" :y1="dragHint.y - 8 / zoom" :x2="dragHint.x" :y2="dragHint.y + 8 / zoom" stroke="#2e9e5b" :stroke-width="1.2 / zoom" />
+      </template>
       <rect
         :x="dragHint.x"
         :y="dragHint.y - 18 / zoom"
         :width="dragHint.text.length * 6.2 / zoom + 8 / zoom"
         :height="16 / zoom"
         rx="3 / zoom"
-        fill="rgba(255,247,224,0.92)"
-        stroke="#d4a017"
+        :fill="dragHint.kind === 'endpoint' ? 'rgba(235,250,240,0.95)' : 'rgba(255,247,224,0.92)'"
+        :stroke="dragHint.kind === 'endpoint' ? '#2e9e5b' : '#d4a017'"
         :stroke-width="1 / zoom"
       />
       <text
         :x="dragHint.x + 4 / zoom"
         :y="dragHint.y - 6 / zoom"
         :font-size="10 / zoom"
-        fill="#7a5b00"
+        :fill="dragHint.kind === 'endpoint' ? '#1e6b3d' : '#7a5b00'"
       >
         {{ dragHint.text }}
       </text>

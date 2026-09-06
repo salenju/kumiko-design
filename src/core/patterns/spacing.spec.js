@@ -5,7 +5,9 @@ import {
   spacingBetween,
   nearestParallelSegment,
   translatePattern,
-  moveLineToSpacing
+  moveLineToSpacing,
+  patternAnchor,
+  nearestForeignEndpoint
 } from './spacing.js'
 
 /** 构造水平/竖直/斜线段 */
@@ -102,5 +104,31 @@ describe('patterns/spacing 平行线间距', () => {
     expect(moveLineToSpacing(lineH, refH, -5)).toBeNull()
     // 非 line kind → null
     expect(moveLineToSpacing({ kind: 'family' }, refH, 10)).toBeNull()
+  })
+
+  it('patternAnchor：line 取起点、family 取 ref', () => {
+    expect(patternAnchor({ kind: 'line', x1: 3, y1: 4 })).toEqual({ x: 3, y: 4 })
+    expect(patternAnchor({ kind: 'family', ref: { x: 7, y: 8 } })).toEqual({ x: 7, y: 8 })
+    expect(patternAnchor({ kind: 'other' })).toEqual({ x: 0, y: 0 })
+  })
+
+  it('nearestForeignEndpoint：返回最近的其它端点；超容差/无候选返回 null', () => {
+    const seg = { id: 'A', x1: 0, y1: 0, x2: 100, y2: 0 }
+    const b = { id: 'B', x1: 100, y1: 30, x2: 100, y2: 80 } // x2 端点与 A 端点重合(100,0)? B x1=(100,30),x2=(100,80) 都不重合
+    const c = { id: 'C', x1: 100.4, y1: 0, x2: 200, y2: 0 } // C.x1≈A.x2 距离 0.4
+    const d = { id: 'D', x1: 500, y1: 500, x2: 600, y2: 600 } // 远处
+
+    const r = nearestForeignEndpoint(seg, [seg, b, c, d], 2)
+    expect(r.other.id).toBe('C')
+    expect(r.x).toBeCloseTo(100.4, 9)
+    expect(r.y).toBeCloseTo(0, 9)
+    expect(r.distance).toBeCloseTo(0.4, 9)
+    expect(r.ownKey).toBe('x2')
+
+    // 超容差
+    expect(nearestForeignEndpoint(seg, [seg, d], 2)).toBeNull()
+    // 空/全自身
+    expect(nearestForeignEndpoint(seg, [], 2)).toBeNull()
+    expect(nearestForeignEndpoint(seg, [seg], 2)).toBeNull()
   })
 })

@@ -142,7 +142,7 @@ function onLineSpacingChange(p, e) {
   const near = adjacentParallel(p)
   const ok = near && Number.isFinite(v) && v > 0
   if (ok) {
-    const moved = movePatternToSpacing(p, near.seg, v)
+    const moved = movePatternToSpacing(p, near.other, v)
     if (moved) {
       updatePattern(p.id, {
         x1: moved.x1,

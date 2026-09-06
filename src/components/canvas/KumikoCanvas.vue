@@ -16,7 +16,7 @@ import { useHistoryStore } from '../../stores/history.js'
 import { useViewport } from '../../composables/useViewport.js'
 import { useSelection } from '../../composables/useSelection.js'
 import { usePatternTool } from '../../composables/usePatternTool.js'
-import { nearestParallelSegment } from '../../core/patterns/index.js'
+import { nearestParallelSegment, nearestForeignEndpoint } from '../../core/patterns/index.js'
 import GridLayer from './GridLayer.vue'
 import PatternLayer from './PatternLayer.vue'
 import InteractionLayer from './InteractionLayer.vue'
@@ -149,7 +149,7 @@ function onPointerMove(e) {
   }
 }
 
-/** 拖拽中更新「与相邻平行线间距」提示（基于当前该图案的代表段） */
+/** 拖拽中更新提示：优先「端点已对齐」，其次「相邻平行线间距」 */
 function updateDragHint() {
   const d = segDrag.value
   if (!d) return
@@ -174,8 +174,23 @@ function updateDragHint() {
     dragHint.value = null
     return
   }
-  // 排除自身图案的段，找最近平行邻居
+  // 其它图案的段（排除自身图案，便于找可对齐的外部端点/平行线）
   const others = project.segments.filter((s) => s.patternId !== d.patternId)
+
+  // 1) 端点重合提示：被拖线端点接近其它图案某端点（容差 = 0.5mm）
+  const END_TOL = Math.max(0.25, 3 / ui.zoom) // 屏幕约 3px
+  const endHit = nearestForeignEndpoint(rep, others, END_TOL)
+  if (endHit) {
+    dragHint.value = {
+      x: endHit.x,
+      y: endHit.y,
+      text: '端点已对齐',
+      kind: 'endpoint'
+    }
+    return
+  }
+
+  // 2) 相邻平行线间距提示
   const near = nearestParallelSegment(rep, others, { tolDeg: 1 })
   const mx = (rep.x1 + rep.x2) / 2
   const my = (rep.y1 + rep.y2) / 2
@@ -185,10 +200,11 @@ function updateDragHint() {
     dragHint.value = {
       x: mx + Math.cos(angle + Math.PI / 2) * offset,
       y: my + Math.sin(angle + Math.PI / 2) * offset,
-      text: `相邻平行线间距 ${near.distance.toFixed(1)} mm`
+      text: `相邻平行线间距 ${near.distance.toFixed(1)} mm`,
+      kind: 'spacing'
     }
   } else {
-    dragHint.value = { x: mx, y: my - 12 / ui.zoom, text: '无可比相邻平行线' }
+    dragHint.value = { x: mx, y: my - 12 / ui.zoom, text: '无可比相邻平行线', kind: 'spacing' }
   }
 }
 
