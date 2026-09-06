@@ -5,10 +5,10 @@
  * 材料参数（标准条长/锯缝/端部余量）保存在 project.material（可撤销编辑）。
  */
 import { ref, computed } from 'vue'
-import { NDrawer, NDrawerContent, NInputNumber, NButton, NEmpty } from 'naive-ui'
+import { NDrawer, NDrawerContent, NInputNumber, NEmpty } from 'naive-ui'
 import { useProjectStore } from '../../stores/project.js'
 import { useHistoryStore } from '../../stores/history.js'
-import { aggregateCutItems, planStock } from '../../core/cutlist/index.js'
+import { planCutGroups } from '../../core/cutlist/index.js'
 
 const props = defineProps({ show: Boolean })
 const emit = defineEmits(['update:show'])
@@ -33,25 +33,13 @@ function setMaterialValue(key, v) {
   project.setMaterial({ [key]: v == null ? 0 : Number(v) })
 }
 
-/** 切割需求按宽度分组 */
-const groups = computed(() => {
-  const items = aggregateCutItems(project.segments)
-  const byWidth = new Map()
-  for (const it of items) {
-    if (!byWidth.has(it.width)) byWidth.set(it.width, [])
-    byWidth.get(it.width).push(it)
-  }
-  const result = []
-  for (const [width, list] of byWidth) {
-    // 端部余量：每端 endAllowance，两段 → 每根料需求长度 = 段长 + 2×余量（简单近似）
-    const plan = planStock(list, {
-      stockLength: project.material.stockLength,
-      kerf: project.material.kerf
-    })
-    result.push({ width, items: list, plan })
-  }
-  return result
-})
+/** 切割需求按宽度分组（与「导出施工」共用 planCutGroups，口径一致） */
+const groups = computed(() =>
+  planCutGroups(project.segments, {
+    stockLength: project.material.stockLength,
+    kerf: project.material.kerf
+  })
+)
 
 const summary = computed(() => {
   let stockCount = 0
@@ -76,10 +64,7 @@ const summary = computed(() => {
 
 <template>
   <n-drawer :show="props.show" :width="560" placement="right" @update:show="emit('update:show', $event)">
-    <n-drawer-content title="算料 · 1D 切割清单 (cut list)">
-      <div style="display: flex; justify-content: flex-end; margin-bottom: 8px">
-        <n-button size="small" @click="emit('update:show', false)">✕ 关闭</n-button>
-      </div>
+    <n-drawer-content title="算料 · 1D 切割清单 (cut list)" closable>
       <div class="cl-material">
         <div class="cl-mat-title">材料参数</div>
         <div class="cl-mat-grid">

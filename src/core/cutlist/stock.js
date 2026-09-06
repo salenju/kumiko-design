@@ -16,6 +16,28 @@ export function round1(x) {
 }
 
 /**
+ * 按木条宽度分组做 1D 下料（属性面板「算料」与「导出施工」共用，保证口径一致）。
+ * @param {Array} segments 派生线段
+ * @param {object} material { stockLength, kerf, endAllowance }
+ * @returns {Array<{width:number, items:Array<{width,length,qty}>, plan:object}>} 按宽度升序
+ */
+export function planCutGroups(segments, material = {}) {
+  const { stockLength, kerf } = material
+  const byWidth = new Map()
+  for (const it of aggregateCutItems(segments)) {
+    if (!byWidth.has(it.width)) byWidth.set(it.width, [])
+    byWidth.get(it.width).push(it)
+  }
+  const groups = []
+  for (const [width, list] of byWidth) {
+    const plan = planStock(list, { stockLength, kerf })
+    groups.push({ width, items: list, plan })
+  }
+  groups.sort((a, b) => a.width - b.width)
+  return groups
+}
+
+/**
  * 由派生 segments 汇总切割需求。
  * 按 width 分组，同组内按长度（0.1mm）合并计数。
  * @returns {Array<{width:number,length:number,qty:number}>}

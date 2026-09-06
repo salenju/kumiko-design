@@ -17,6 +17,7 @@ import KumikoCanvas from './components/canvas/KumikoCanvas.vue'
 import Toolbar from './components/panels/Toolbar.vue'
 import PatternPropertyPanel from './components/panels/PatternPropertyPanel.vue'
 import CutListPanel from './components/panels/CutListPanel.vue'
+import PartsPanel from './components/panels/PartsPanel.vue'
 import PresetsModal from './components/dialogs/PresetsModal.vue'
 import AiModal from './components/dialogs/AiModal.vue'
 import { useSelection } from './composables/useSelection.js'
@@ -30,6 +31,17 @@ const canvasRef = ref(null)
 const showPresets = ref(false)
 const showAi = ref(false)
 const showCutlist = ref(false)
+const showParts = ref(false)
+
+/** 算料 / 图案部件 两个抽屉互斥打开 */
+function openCutlist() {
+  showCutlist.value = true
+  showParts.value = false
+}
+function openParts() {
+  showParts.value = true
+  showCutlist.value = false
+}
 
 function saveLocal() {
   saveProjectNow(project)
@@ -134,7 +146,8 @@ onBeforeUnmount(() => {
         <Toolbar
           @open-presets="showPresets = true"
           @open-ai="showAi = true"
-          @open-cutlist="showCutlist = true"
+          @open-cutlist="openCutlist"
+          @open-parts="openParts"
           @fit="onFit"
         />
         <div class="kd-main">
@@ -149,6 +162,7 @@ onBeforeUnmount(() => {
         <PresetsModal v-model:show="showPresets" />
         <AiModal v-model:show="showAi" />
         <CutListPanel v-model:show="showCutlist" />
+        <PartsPanel v-model:show="showParts" />
       </div>
     </n-message-provider>
   </n-config-provider>
