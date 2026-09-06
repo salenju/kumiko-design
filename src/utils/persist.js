@@ -41,7 +41,8 @@ function toStorable(state) {
     version: state.version,
     patterns: state.patterns,
     material: state.material,
-    spacingUnit: state.spacingUnit
+    spacingUnit: state.spacingUnit,
+    lineColors: state.lineColors
   }
 }
 

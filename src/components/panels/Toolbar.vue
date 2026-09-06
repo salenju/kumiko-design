@@ -17,10 +17,11 @@ import {
 } from '../../utils/projectFile.js'
 import { buildConstructionEntries } from '../../utils/constructionDoc.js'
 import { downloadZip } from '../../utils/zip.js'
+import { colorForSeg } from '../../core/colors.js'
 import { saveProjectNow, clearPersistedProject } from '../../utils/persist.js'
 import { formatShortcut } from '../../utils/platform.js'
 
-const emit = defineEmits(['open-presets', 'open-ai', 'open-cutlist', 'open-parts', 'fit'])
+const emit = defineEmits(['open-presets', 'open-ai', 'open-cutlist', 'open-parts', 'open-settings', 'fit'])
 const ui = useUiStore()
 const history = useHistoryStore()
 const project = useProjectStore()
@@ -115,9 +116,11 @@ function exportFile() {
       patterns: project.patterns,
       material: project.material,
       spacingUnit: project.spacingUnit,
+      lineColors: project.lineColors,
       segments: project.segments
     }
-    const entries = buildConstructionEntries(data, buildSvgString(data.segments), base)
+    const svg = buildSvgString(data.segments, { strokeOf: (s) => colorForSeg(data.lineColors, s) })
+    const entries = buildConstructionEntries(data, svg, base)
     downloadZip(entries, `${base}.zip`)
     showExport.value = false
     message.success(`已导出施工资料包 ${base}.zip（json/设计图/施工单/算料/部件）`)
@@ -151,7 +154,7 @@ function exportSvg() {
     message.warning('画布为空，没有可导出的线段')
     return
   }
-  const svg = buildSvgString(segs)
+  const svg = buildSvgString(segs, { strokeOf: (s) => colorForSeg(project.lineColors, s) })
   downloadSvg(svg, 'kumiko-design.svg')
   message.success(`已导出 SVG（${segs.length} 段）`)
 }
@@ -214,6 +217,7 @@ function toggleLabels() {
       <button class="tb-btn" :title="`立即保存到浏览器本地（${formatShortcut(['mod', 's'])}）`" @click="saveLocal">💾 保存</button>
       <button class="tb-btn" title="导出项目文件 .kumiko.json（先输入导出文件名）" @click="openExportDialog">⇩ 导出文件</button>
       <button class="tb-btn" title="导入 .kumiko.json 项目文件（替换当前项目，可撤销）" @click="importFile">⇧ 导入文件</button>
+      <button class="tb-btn" title="设置：全局间距单位、线条按角度颜色（随项目保存）" @click="emit('open-settings')">⚙ 设置</button>
     </div>
 
     <div class="tb-spacer"></div>

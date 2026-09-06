@@ -18,6 +18,7 @@ import Toolbar from './components/panels/Toolbar.vue'
 import PatternPropertyPanel from './components/panels/PatternPropertyPanel.vue'
 import CutListPanel from './components/panels/CutListPanel.vue'
 import PartsPanel from './components/panels/PartsPanel.vue'
+import SettingsPanel from './components/panels/SettingsPanel.vue'
 import PresetsModal from './components/dialogs/PresetsModal.vue'
 import AiModal from './components/dialogs/AiModal.vue'
 import { useSelection } from './composables/useSelection.js'
@@ -32,6 +33,7 @@ const showPresets = ref(false)
 const showAi = ref(false)
 const showCutlist = ref(false)
 const showParts = ref(false)
+const showSettings = ref(false)
 
 /** 算料 / 图案部件 两个抽屉互斥打开 */
 function openCutlist() {
@@ -148,6 +150,7 @@ onBeforeUnmount(() => {
           @open-ai="showAi = true"
           @open-cutlist="openCutlist"
           @open-parts="openParts"
+          @open-settings="showSettings = true"
           @fit="onFit"
         />
         <div class="kd-main">
@@ -163,6 +166,7 @@ onBeforeUnmount(() => {
         <AiModal v-model:show="showAi" />
         <CutListPanel v-model:show="showCutlist" />
         <PartsPanel v-model:show="showParts" />
+        <SettingsPanel v-model:show="showSettings" />
       </div>
     </n-message-provider>
   </n-config-provider>

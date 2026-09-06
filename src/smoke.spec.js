@@ -220,4 +220,33 @@ describe('状态集成冒烟：store + composable + core 数据流', () => {
     p2.restore(legacy)
     expect(p2.spacingUnit).toBe(25)
   })
+
+  it('线条角度配色：默认方案、upsert/删除/兜底色，随快照往返且可撤销', () => {
+    const project = useProjectStore()
+    const history = useHistoryStore()
+    const d = project.lineColors
+    expect(Array.isArray(d.angles)).toBe(true)
+    expect(d.fallback).toMatch(/^#/)
+
+    // upsert：新增/覆盖某角度
+    history.beginEdit(() => project.upsertLineColor(0, '#ff0000'))
+    expect(project.lineColors.angles.find((e) => e.angle === 0).color).toBe('#ff0000')
+    history.undo()
+    expect(project.lineColors.angles.find((e) => e.angle === 0).color).not.toBe('#ff0000')
+
+    // 删除与重置
+    project.removeLineColor(90)
+    expect(project.lineColors.angles.some((e) => e.angle === 90)).toBe(false)
+    project.resetLineColors()
+    expect(project.lineColors.angles.some((e) => e.angle === 90)).toBe(true)
+
+    // 兜底色 + 快照往返
+    history.beginEdit(() => project.setLineFallback('#123456'))
+    const snap = project.snapshot()
+    expect(project.lineColors.fallback).toBe('#123456')
+    setActivePinia(createPinia())
+    const p2 = useProjectStore()
+    p2.restore(snap)
+    expect(p2.lineColors.fallback).toBe('#123456')
+  })
 })

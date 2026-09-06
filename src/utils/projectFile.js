@@ -17,7 +17,8 @@ export function buildProjectJson(projectStore) {
       exportedAt: new Date().toISOString(),
       patterns: projectStore.patterns,
       material: projectStore.material,
-      spacingUnit: projectStore.spacingUnit
+      spacingUnit: projectStore.spacingUnit,
+      lineColors: projectStore.lineColors
     },
     null,
     2
@@ -72,8 +73,10 @@ export function parseProjectJson(text) {
   return {
     patterns: data.patterns,
     material: data.material || {},
-    // 旧版本文件无 spacingUnit → undefined，replaceAll 时会回退默认 10
-    spacingUnit: Number.isFinite(spacingUnit) && spacingUnit > 0 ? spacingUnit : undefined
+    // 旧版本文件缺 spacingUnit/lineColors → undefined，replaceAll 时回退默认
+    spacingUnit: Number.isFinite(spacingUnit) && spacingUnit > 0 ? spacingUnit : undefined,
+    lineColors:
+      data.lineColors && typeof data.lineColors === 'object' ? data.lineColors : undefined
   }
 }
 

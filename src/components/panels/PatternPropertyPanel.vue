@@ -117,7 +117,7 @@ function commitLineAngle(p, v) {
 
 /* ---------- 间距按全局单位 Nx 倍数（线族「间距」+ 单线「相邻线间距」） ---------- */
 /**
- * 全局间距单位 spacingUnit（默认 10mm，见「算料 → 全局间距单位」）。
+ * 全局间距单位 spacingUnit（默认 10mm，见工具栏「⚙ 设置」）。
  * 面板上间距一律以 Nx 下拉设置：Nx = N × spacingUnit。
  */
 
@@ -227,7 +227,7 @@ function commitAdjacent(p, v) {
         </tr>
         <tr>
           <td>全局间距单位</td>
-          <td>{{ project.spacingUnit }} mm（改：算料抽屉）</td>
+          <td>{{ project.spacingUnit }} mm（改：工具栏 ⚙ 设置）</td>
         </tr>
       </table>
       <p class="pp-hint">提示：点选线段选中其所属图案并编辑；Ctrl/Shift+点选多选；Delete 删除。</p>
@@ -336,7 +336,7 @@ function commitAdjacent(p, v) {
               @update:value="commitFamilySpacing(p, $event)"
               @blur="onFieldCommit"
             />
-            <div class="pp-hint2">相邻木条中心距按全局单位整数倍设置；想整体调密/调疏就改它。改单位见「算料 → 全局间距单位」。</div>
+            <div class="pp-hint2">相邻木条中心距按全局单位整数倍设置；想整体调密/调疏就改它。改单位见工具栏「⚙ 设置」。</div>
           </div>
           <div class="pp-field">
             <label>条数</label>

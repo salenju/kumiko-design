@@ -57,7 +57,66 @@ const segDrag = ref(null) // { patternId, seg, snapBefore, lastWorld }
 const dragHints = ref([]) // [{ x, y, text, kind }] 拖拽中的提示（世界坐标）
 const panSession = ref(false) // 本次拖拽是否为平移手势（含空格临时平移）
 
-const DRAG_THRESHOLD_PX = 4 // 判定为拖拽的屏幕像素阈值
+const DRAG_THRESHOLD_PX = 4 // 判定为拖拽的屏幕像素阈值（鼠标）
+const TOUCH_DRAG_THRESHOLD_PX = 12 // 触摸防误触：稍大
+const PINCH_MIN_PX = 8 // 双指距离小于此值不缩放（避免误判）
+
+// —— 多指手势（触摸板/pad 捏合缩放、双指平移） ——
+const activePointers = new Map() // pointerId → {x, y}（client 坐标）
+const pinchPair = ref(null) // 双指手势使用的两个 pointerId
+const pinchPrev = ref(null) // 上一帧 { dist, midX, midY }
+const multiGesture = ref(false) // 是否处于多指手势
+const strayUpId = ref(null) // 捏合后残留单指的 pointerId（忽略其抬起，防误操作）
+
+// —— 双击适配 ——
+const TAP_MS = 300
+const TAP_DIST_PX = 24
+const lastTap = ref({ t: 0, x: 0, y: 0 })
+
+function pointerDistance() {
+  const ids = pinchPair.value ? pinchPair.value.ids : []
+  if (ids.length !== 2) return 0
+  const a = activePointers.get(ids[0])
+  const b = activePointers.get(ids[1])
+  if (!a || !b) return 0
+  return Math.hypot(a.x - b.x, a.y - b.y)
+}
+function pointerMid() {
+  const ids = pinchPair.value ? pinchPair.value.ids : []
+  if (ids.length !== 2) return null
+  const a = activePointers.get(ids[0])
+  const b = activePointers.get(ids[1])
+  if (!a || !b) return null
+  return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
+}
+/** 从当前活跃指针里选前两根作为双指手势对象 */
+function ensurePinchPair() {
+  const ids = [...activePointers.keys()]
+  if (pinchPair.value === null && ids.length >= 2) {
+    pinchPair.value = { ids: [ids[0], ids[1]] }
+    const d = pointerDistance()
+    const m = pointerMid()
+    pinchPrev.value = d > PINCH_MIN_PX && m ? { dist: d, midX: m.x, midY: m.y } : null
+  }
+}
+/** 双指手势：以两指中点为锚缩放 + 中点移动平移 */
+function applyPinch() {
+  const m = pointerMid()
+  const d = pointerDistance()
+  const prev = pinchPrev.value
+  pinchPrev.value = d > PINCH_MIN_PX && m ? { dist: d, midX: m.x, midY: m.y } : null
+  if (!prev || !m || !(d > PINCH_MIN_PX) || !(prev.dist > PINCH_MIN_PX)) return
+  // 1) 中点移动量（旧帧世界坐标 - 当前中点）
+  const worldPrev = screenToWorld(prev.midX, prev.midY)
+  // 2) 缩放（锚在当前中点的世界位置）
+  const factor = d / prev.dist
+  zoomAt(m.x, m.y, factor)
+  // 3) 平移，使旧帧中点下的世界点跟随到新中点
+  const worldNow = screenToWorld(m.x, m.y)
+  if (worldPrev && worldNow) {
+    panByPx((worldPrev.x - worldNow.x) * ui.zoom, (worldPrev.y - worldNow.y) * ui.zoom)
+  }
+}
 
 function worldOf(e) {
   return screenToWorld(e.clientX, e.clientY)
@@ -65,16 +124,30 @@ function worldOf(e) {
 
 function onPointerDown(e) {
   const w = worldOf(e)
-  dragging.value = true
-  moved.value = false
-  dragStart.value = w
-  lastPointer.value = { x: e.clientX, y: e.clientY }
+  activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY })
   // 捕获指针：保证拖出容器仍收到 move/up
   try {
     svgEl.value?.setPointerCapture?.(e.pointerId)
   } catch {
     /* 兼容性忽略 */
   }
+  if (activePointers.size >= 2) {
+    // 第二根手指落下 → 双指手势（缩放/平移），取消进行中的单指动作
+    dragging.value = true
+    multiGesture.value = true
+    segDrag.value = null
+    dragHints.value = []
+    rubber.value = null
+    panSession.value = false
+    ui.setHovered(null)
+    patternTool.cancel()
+    ensurePinchPair()
+    return
+  }
+  dragging.value = true
+  moved.value = false
+  dragStart.value = w
+  lastPointer.value = { x: e.clientX, y: e.clientY }
   if (isPanning.value) {
     panSession.value = true
     return
@@ -99,9 +172,18 @@ function onPointerDown(e) {
 }
 
 function onPointerMove(e) {
+  if (activePointers.has(e.pointerId)) {
+    activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY })
+  }
+  // 多指手势：只对参与双指的两根指针做缩放/平移
+  if (multiGesture.value) {
+    const ids = pinchPair.value ? pinchPair.value.ids : []
+    if (ids.includes(e.pointerId)) applyPinch()
+    return
+  }
   if (!dragging.value) {
-    // hover 命中提示（仅 select 模式）
-    if (mode.value === 'select') {
+    // hover 命中提示（仅 select 模式；触摸不触发悬停）
+    if (mode.value === 'select' && e.pointerType !== 'touch') {
       const w = worldOf(e)
       const seg = selection.pickSegment(w.x, w.y)
       ui.setHovered(seg ? seg.id : null)
@@ -127,12 +209,13 @@ function onPointerMove(e) {
   // select：线段拖拽 or 框选
   if (segDrag.value) {
     const d = segDrag.value
-    // 屏幕位移（世界位移 × zoom）达到阈值才升级为拖拽（区分点选）
+    // 屏幕位移（世界位移 × zoom）达到阈值才升级为拖拽（区分点选；触摸阈值更大防误触）
     const movePx = Math.hypot(
       (w.x - dragStart.value.x) * ui.zoom,
       (w.y - dragStart.value.y) * ui.zoom
     )
-    if (!d.active && movePx >= DRAG_THRESHOLD_PX) {
+    const threshold = e.pointerType === 'touch' ? TOUCH_DRAG_THRESHOLD_PX : DRAG_THRESHOLD_PX
+    if (!d.active && movePx >= threshold) {
       d.active = true
       // 首次拖动：若未选中该图案则单选它
       if (!ui.selectedPatternIds.includes(d.patternId)) {
@@ -248,10 +331,49 @@ function segOrientationOf(seg) {
 }
 
 function onPointerUp(e) {
+  activePointers.delete(e.pointerId)
+
+  // 多指手势结束：只剩 0/1 指时收尾（残留的单指忽略其抬起）
+  if (multiGesture.value) {
+    const ids = pinchPair.value ? pinchPair.value.ids : []
+    if (ids.includes(e.pointerId)) pinchPair.value = null
+    if (activePointers.size >= 2) {
+      ensurePinchPair()
+      return
+    }
+    multiGesture.value = false
+    pinchPair.value = null
+    pinchPrev.value = null
+    const remain = [...activePointers.keys()]
+    strayUpId.value = remain.length === 1 ? remain[0] : null
+    dragging.value = false
+    ui.setHovered(null)
+    return
+  }
+  // 捏合结束残留的最后一根手指抬起：忽略，避免误点/误拖
+  if (e.pointerId === strayUpId.value) {
+    strayUpId.value = null
+    return
+  }
+
   if (!dragging.value) return
   const w = worldOf(e)
   dragging.value = false
   ui.setHovered(null)
+
+  // 双击适配（仅简单点击：非平移、非绘制、未移动）
+  const tapLike =
+    !isPanning.value && !drawModes.includes(mode.value) && !moved.value && !multiGesture.value
+  if (tapLike) {
+    const now = performance.now()
+    const dt = now - lastTap.value.t
+    const dist = Math.hypot(e.clientX - lastTap.value.x, e.clientY - lastTap.value.y)
+    lastTap.value = { t: now, x: e.clientX, y: e.clientY }
+    if (dt < TAP_MS && dist < TAP_DIST_PX) {
+      lastTap.value = { t: 0, x: 0, y: 0 } // 消费这次双击
+      fitToProject()
+    }
+  }
 
   if (isPanning.value || panSession.value) {
     panSession.value = false
@@ -280,7 +402,11 @@ function onPointerUp(e) {
 
   if (rubber.value) {
     const r = rubber.value
-    if (moved.value && Math.abs(r.x2 - r.x1) > 0.5 && Math.abs(r.y2 - r.y1) > 0.5) {
+    // 触摸防误触：屏幕范围过小的“框”视为点击空白（清空选择）
+    const pxW = Math.abs(r.x2 - r.x1) * ui.zoom
+    const pxH = Math.abs(r.y2 - r.y1) * ui.zoom
+    const minSel = e.pointerType === 'touch' ? 10 : 4
+    if (moved.value && pxW > minSel && pxH > minSel) {
       selection.boxSelect(r)
     } else {
       // 视为点击空白 → 清空选择
@@ -340,6 +466,7 @@ onMounted(() => {
         :hovered-segment-id="ui.hoveredSegmentId"
         :labels-enabled="ui.labelsEnabled"
         :zoom="ui.zoom"
+        :color-scheme="project.lineColors"
       />
       <InteractionLayer :rubber="rubber" :draft="ui.draft" :drag-hints="dragHints" :zoom="ui.zoom" />
     </svg>

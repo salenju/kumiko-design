@@ -102,27 +102,6 @@ const summary = computed(() => {
         <div class="cl-mat-note">端部余量为每端预留（45° 斜切近似）；实际下料长度 = 段长 + 2 × 端部余量（保守估值见清单余料）。</div>
       </div>
 
-      <div class="cl-material">
-        <div class="cl-mat-title">全局间距单位（相邻线/线族间距基准）</div>
-        <div class="cl-mat-unit">
-          <label>间距单位 mm
-            <n-input-number
-              :value="project.spacingUnit"
-              :min="1"
-              :max="500"
-              :step="1"
-              @focus="onMatFocus"
-              @update:value="(v) => project.setSpacingUnit(v)"
-              @blur="onMatChange"
-            />
-          </label>
-        </div>
-        <div class="cl-mat-note">
-          组子图案按同一基本单位布排：线族「间距」与单线「相邻线间距」在右侧属性面板按该单位的
-          <b>整数倍 Nx</b> 设置（默认 10mm，1x = 1 × 10mm，4x = 4 × 10mm）。改单位不影响已画线段的实际间距。
-        </div>
-      </div>
-
       <n-empty
         v-if="!project.segments.length"
         description="画布为空，先添加纹样再算料"
@@ -167,8 +146,7 @@ const summary = computed(() => {
 .cl-material { background: #f6f6f2; border: 1px solid var(--kd-border); border-radius: 8px; padding: 10px; margin-bottom: 12px; }
 .cl-mat-title { font-weight: 600; margin-bottom: 8px; font-size: 13px; }
 .cl-mat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
-.cl-mat-grid label, .cl-mat-unit label { font-size: 12px; color: #555; display: flex; flex-direction: column; gap: 4px; }
-.cl-mat-unit { max-width: 170px; }
+.cl-mat-grid label { font-size: 12px; color: #555; display: flex; flex-direction: column; gap: 4px; }
 .cl-mat-note { font-size: 11px; color: #999; margin-top: 8px; }
 .cl-summary { background: #eef4ff; border-radius: 6px; padding: 8px 10px; font-size: 13px; margin-bottom: 10px; }
 .cl-group { margin-bottom: 16px; }

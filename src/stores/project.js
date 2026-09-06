@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { deriveSegments, segmentsBounds, translatePattern } from '../core/index.js'
+import { defaultColorScheme, normalizeScheme, angleKey } from '../core/index.js'
 
 /**
  * project store —— 唯一持久化数据源（V2 §3.2）
@@ -9,18 +10,21 @@ import { deriveSegments, segmentsBounds, translatePattern } from '../core/index.
  *   - material 材料规格
  *   - spacingUnit 全局间距单位 mm（默认 10）：线族「间距」/单线「相邻线间距」
  *     按该单位的整数倍（Nx）设置，见 core/patterns/spacing.js 的换算与下拉选项。
+ *   - lineColors 线条配色（按方向角度）：{ fallback, angles:[{angle,color}] }
+ *     见 core/colors.js；影响画布渲染与 SVG/施工包导出（随项目持久化）。
  * 派生 segments 由 getter 实时计算（响应式缓存），不入 state、不持久化。
  */
 export const useProjectStore = defineStore('project', {
   state: () => ({
-    version: 4,
+    version: 5,
     patterns: [],
     material: {
       stockLength: 1200, // 标准条长 mm
       kerf: 1.5, // 锯缝 mm
       endAllowance: 2 // 每端端部处理余量 mm（45° 斜切近似）
     },
-    spacingUnit: 10 // 全局间距单位 mm（1x = 1 × spacingUnit）
+    spacingUnit: 10, // 全局间距单位 mm（1x = 1 × spacingUnit）
+    lineColors: defaultColorScheme() // 线条按角度配色（见 core/colors.js）
   }),
 
   getters: {
@@ -106,15 +110,56 @@ export const useProjectStore = defineStore('project', {
       if (Number.isFinite(n) && n > 0) this.spacingUnit = n
     },
 
+    /* ----- 线条角度配色 ----- */
+
+    /** 整体替换配色方案（会规整化；面板负责会话级撤销） */
+    setLineColors(scheme) {
+      this.lineColors = normalizeScheme(scheme)
+    },
+
+    /** 设置「其它角度」兜底色 */
+    setLineFallback(color) {
+      if (typeof color !== 'string' || !color) return
+      this.lineColors = { ...this.lineColors, fallback: color }
+    },
+
+    /** 新增/覆盖某角度颜色（0.1° 匹配去重，按角度升序） */
+    upsertLineColor(angle, color) {
+      if (!Number.isFinite(angle) || typeof color !== 'string' || !color) return
+      const k = angleKey(angle)
+      const others = this.lineColors.angles.filter((e) => angleKey(e.angle) !== k)
+      others.push({ angle: k, color })
+      others.sort((a, b) => a.angle - b.angle)
+      this.lineColors = { ...this.lineColors, angles: others }
+    },
+
+    /** 删除某角度颜色 */
+    removeLineColor(angle) {
+      if (!Number.isFinite(angle)) return
+      const k = angleKey(angle)
+      this.lineColors = {
+        ...this.lineColors,
+        angles: this.lineColors.angles.filter((e) => angleKey(e.angle) !== k)
+      }
+    },
+
+    /** 恢复默认配色 */
+    resetLineColors() {
+      this.lineColors = defaultColorScheme()
+    },
+
     /**
      * 整体替换（undo/redo/加载用）。
-     * 兼容旧数据：某字段缺失时保持当前值（spacingUnit 缺省=默认 10）。
+     * 兼容旧数据：某字段缺失时保持当前值（spacingUnit/lineColors 缺省用默认）。
      */
-    replaceAll({ patterns, material, spacingUnit }) {
+    replaceAll({ patterns, material, spacingUnit, lineColors }) {
       if (Array.isArray(patterns)) this.patterns = patterns
       if (material) this.material = { ...this.material, ...material }
       if (typeof spacingUnit === 'number' && Number.isFinite(spacingUnit) && spacingUnit > 0) {
         this.spacingUnit = spacingUnit
+      }
+      if (lineColors && typeof lineColors === 'object') {
+        this.lineColors = normalizeScheme(lineColors)
       }
     },
 
@@ -124,7 +169,8 @@ export const useProjectStore = defineStore('project', {
         version: this.version,
         patterns: this.patterns,
         material: this.material,
-        spacingUnit: this.spacingUnit
+        spacingUnit: this.spacingUnit,
+        lineColors: this.lineColors
       })
     },
 

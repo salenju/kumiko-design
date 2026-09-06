@@ -3,10 +3,11 @@ import { buildProjectJson, parseProjectJson, sanitizeFileBase } from './projectF
 
 /** 模拟 project store 形状（纯数据） */
 const fakeStore = {
-  version: 4,
+  version: 5,
   patterns: [{ id: 'p1', kind: 'family', angle: 60 }],
   material: { stockLength: 1200, kerf: 1.5, endAllowance: 2 },
-  spacingUnit: 10
+  spacingUnit: 10,
+  lineColors: { fallback: '#222222', angles: [{ angle: 0, color: '#4e79a7' }] }
 }
 
 describe('utils/projectFile 项目文件导出/导入', () => {
@@ -14,26 +15,35 @@ describe('utils/projectFile 项目文件导出/导入', () => {
     const json = buildProjectJson(fakeStore)
     const data = JSON.parse(json)
     expect(data.app).toBe('kumiko-design')
-    expect(data.version).toBe(4)
+    expect(data.version).toBe(5)
     expect(data.patterns).toEqual(fakeStore.patterns)
     expect(data.material).toEqual(fakeStore.material)
     expect(data.spacingUnit).toBe(10)
+    expect(data.lineColors).toEqual(fakeStore.lineColors)
     expect(typeof data.exportedAt).toBe('string')
     expect(typeof data.file).toBe('string')
   })
 
-  it('parseProjectJson 正确解析有效文件（含全局间距单位）', () => {
-    const json = JSON.stringify({ patterns: [{ id: 'a' }], material: { kerf: 2 }, spacingUnit: 12 })
+  it('parseProjectJson 正确解析有效文件（含单位与配色）', () => {
+    const json = JSON.stringify({
+      patterns: [{ id: 'a' }],
+      material: { kerf: 2 },
+      spacingUnit: 12,
+      lineColors: { fallback: '#111111', angles: [{ angle: 45, color: '#abcdef' }] }
+    })
     const data = parseProjectJson(json)
     expect(data.patterns).toEqual([{ id: 'a' }])
     expect(data.material.kerf).toBe(2)
     expect(data.spacingUnit).toBe(12)
+    expect(data.lineColors.angles).toEqual([{ angle: 45, color: '#abcdef' }])
   })
 
-  it('parseProjectJson：旧文件/非法单位 → spacingUnit undefined（回退默认）', () => {
-    // 旧版本文件没有 spacingUnit
-    expect(parseProjectJson('{"patterns":[]}').spacingUnit).toBeUndefined()
-    // 非法（0 / 负数 / 非数字）同样回退
+  it('parseProjectJson：旧文件/非法字段 → spacingUnit / lineColors undefined（回退默认）', () => {
+    // 旧版本文件没有 spacingUnit / lineColors
+    const old = parseProjectJson('{"patterns":[]}')
+    expect(old.spacingUnit).toBeUndefined()
+    expect(old.lineColors).toBeUndefined()
+    // 非法同样回退
     expect(parseProjectJson('{"patterns":[],"spacingUnit":0}').spacingUnit).toBeUndefined()
     expect(parseProjectJson('{"patterns":[],"spacingUnit":"abc"}').spacingUnit).toBeUndefined()
   })

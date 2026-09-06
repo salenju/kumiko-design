@@ -5,22 +5,36 @@
  * 高亮：选中族加粗蓝色；悬停段红色。长度标注按需显示（屏幕恒定字号）。
  */
 import { computed } from 'vue'
+import { colorForSeg, HOVER_COLOR, SELECTED_COLOR } from '../../core/colors.js'
 
 const props = defineProps({
   segments: { type: Array, default: () => [] },
   selectedIds: { type: Array, default: () => [] },
   hoveredSegmentId: { type: String, default: null },
   labelsEnabled: { type: Boolean, default: false },
-  zoom: { type: Number, required: true }
+  zoom: { type: Number, required: true },
+  /** 线条配色方案（{fallback, hoverColor, selectedColor, angles:[{angle,color}]}，见 core/colors.js）；缺省用旧色 */
+  colorScheme: { type: Object, default: null }
 })
 
 const selectedSet = computed(() => new Set(props.selectedIds))
 const labelFontMm = computed(() => 11 / props.zoom)
 
-function segColor(seg) {
-  if (seg.id === props.hoveredSegmentId) return '#d64541'
-  if (selectedSet.value.has(seg.patternId)) return '#2f6fd0'
-  return '#222222'
+/** 木条主色：按线段方向角度取项目配色 */
+function baseColor(seg) {
+  return props.colorScheme ? colorForSeg(props.colorScheme, seg) : '#222222'
+}
+
+/** 高亮环色：悬停色 / 选中色（可由用户配置，避免与线条色冲突）；无高亮返回 null */
+function ringColor(seg) {
+  const scheme = props.colorScheme
+  if (seg.id === props.hoveredSegmentId) {
+    return scheme ? scheme.hoverColor : HOVER_COLOR
+  }
+  if (selectedSet.value.has(seg.patternId)) {
+    return scheme ? scheme.selectedColor : SELECTED_COLOR
+  }
+  return null
 }
 
 /**
@@ -66,18 +80,18 @@ function placementFor(seg) {
         :y1="seg.y1"
         :x2="seg.x2"
         :y2="seg.y2"
-        :stroke="segColor(seg)"
+        :stroke="baseColor(seg)"
         :stroke-width="seg.width"
         stroke-linecap="butt"
       />
-      <!-- 高亮描边：比木条稍宽一圈，仍物理缩放 -->
+      <!-- 高亮环（悬停红 / 选中蓝）：叠加在配色线上，不覆盖原方向色 -->
       <line
-        v-if="selectedSet.has(seg.patternId) || seg.id === hoveredSegmentId"
+        v-if="ringColor(seg)"
         :x1="seg.x1"
         :y1="seg.y1"
         :x2="seg.x2"
         :y2="seg.y2"
-        :stroke="segColor(seg)"
+        :stroke="ringColor(seg)"
         :stroke-width="seg.width + Math.max(0.6, 2 / zoom)"
         stroke-opacity="0.35"
       />

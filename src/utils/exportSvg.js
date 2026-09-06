@@ -8,11 +8,14 @@ import { segmentsBounds } from '../core/patterns/index.js'
 /**
  * 由派生线段构建 SVG 字符串。
  * @param {Array} segments
- * @param {object} [opts] { padding=10(mm), strokeScale=1, includeBounds }
+ * @param {object} [opts]
+ *   { padding=10(mm), strokeOf?:(seg)=>color, includeBounds }
+ *   不传 strokeOf 时默认 #000（兼容旧行为）；传了按每条线段方向取色（如项目配色）。
  * @returns {string} SVG XML
  */
 export function buildSvgString(segments, opts = {}) {
   const padding = opts.padding ?? 10
+  const strokeOf = typeof opts.strokeOf === 'function' ? opts.strokeOf : () => '#000'
   const bounds = segmentsBounds(segments)
   if (!bounds) {
     return `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 10 10"></svg>`
@@ -24,7 +27,7 @@ export function buildSvgString(segments, opts = {}) {
   const lines = (segments || [])
     .map((s) => {
       const strokeWidth = Math.max(0.05, s.width || 1)
-      return `  <line x1="${s.x1}" y1="${s.y1}" x2="${s.x2}" y2="${s.y2}" stroke="#000" stroke-width="${strokeWidth}" />`
+      return `  <line x1="${s.x1}" y1="${s.y1}" x2="${s.x2}" y2="${s.y2}" stroke="${strokeOf(s)}" stroke-width="${strokeWidth}" />`
     })
     .join('\n')
   return [
