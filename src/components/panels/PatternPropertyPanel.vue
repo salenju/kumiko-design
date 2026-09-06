@@ -14,6 +14,7 @@ import {
   endFromPolar,
   length
 } from '../../core/geometry/index.js'
+import { nearestParallelSegment, movePatternToSpacing } from '../../core/patterns/index.js'
 
 const project = useProjectStore()
 const ui = useUiStore()
@@ -114,6 +115,47 @@ function onLineAngleChange(p, e) {
   if (!ok) e.target.value = lineAngleDeg(p).toFixed(1)
   onFieldChange()
 }
+
+/* ---------- 相邻平行线间距（单线） ---------- */
+
+/** 把单线 pattern 转成线段结构 */
+function linePatternAsSeg(p) {
+  return { id: p.id, x1: p.x1, y1: p.y1, x2: p.x2, y2: p.y2, patternId: p.id }
+}
+
+/** 找与选中图案相邻的最近平行线（排除自身图案的段）；返回 {seg, distance} 或 null */
+function adjacentParallel(p) {
+  const mine = new Set(
+    project.segments.filter((s) => s.patternId === p.id).map((s) => s.id)
+  )
+  const seg = linePatternAsSeg(p)
+  const others = project.segments.filter((s) => !mine.has(s.id))
+  return nearestParallelSegment(seg, others, { tolDeg: 1 })
+}
+
+/**
+ * 相邻间距输入（change/blur 应用）：把单线整体移动，使其与最近的
+ * 相邻平行线间距 = 输入值（保持原本位于参考线哪一侧）。
+ */
+function onLineSpacingChange(p, e) {
+  const v = Number(e.target.value)
+  const near = adjacentParallel(p)
+  const ok = near && Number.isFinite(v) && v > 0
+  if (ok) {
+    const moved = movePatternToSpacing(p, near.seg, v)
+    if (moved) {
+      updatePattern(p.id, {
+        x1: moved.x1,
+        y1: moved.y1,
+        x2: moved.x2,
+        y2: moved.y2
+      })
+    }
+  }
+  const nearAfter = adjacentParallel(p)
+  e.target.value = nearAfter ? nearAfter.distance.toFixed(1) : ''
+  onFieldChange()
+}
 </script>
 
 <template>
@@ -183,6 +225,21 @@ function onLineAngleChange(p, e) {
             />
           </div>
           <div class="pp-hint2">0°=水平向右，90°=竖直向下（同画线方向）；改长度保持角度，改角度保持长度。</div>
+          <div class="pp-field">
+            <label>相邻线间距 mm</label>
+            <input
+              type="number"
+              step="0.5"
+              min="0.1"
+              :value="adjacentParallel(p) ? adjacentParallel(p).distance.toFixed(1) : ''"
+              :disabled="!adjacentParallel(p)"
+              :placeholder="adjacentParallel(p) ? '' : '无相邻平行线'"
+              @focus="onFieldFocus"
+              @change="onLineSpacingChange(p, $event)"
+              @keydown.enter.prevent="$event.target.blur()"
+            />
+          </div>
+          <div class="pp-hint2">输入目标间距后按回车/失焦：本线向最近的相邻平行线移动至该间距（保持所在侧）。</div>
           <div class="pp-sub">终点（微调）</div>
           <div class="pp-bounds">
             <div class="pp-field half"><label>X2</label><input type="number" step="1" :value="p.x2" @focus="onFieldFocus" @change="onFieldChange" @input="updatePattern(p.id, { x2: Number($event.target.value) })" /></div>

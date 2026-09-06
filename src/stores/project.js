@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { deriveSegments, segmentsBounds } from '../core/index.js'
+import { deriveSegments, segmentsBounds, translatePattern } from '../core/index.js'
 
 /**
  * project store —— 唯一持久化数据源（V2 §3.2）
@@ -74,6 +74,16 @@ export const useProjectStore = defineStore('project', {
     updatePattern(id, patch) {
       this.patterns = this.patterns.map((p) =>
         p.id === id ? { ...p, ...patch } : p
+      )
+    },
+
+    /**
+     * 平移整个图案（单线平移两端点 / 线族整体平移 ref+bounds）。
+     * 拖拽中高频调用；由调用方负责撤销（一次拖拽一条历史）。
+     */
+    translatePattern(id, dx, dy) {
+      this.patterns = this.patterns.map((p) =>
+        p.id === id ? translatePattern(p, dx, dy) : p
       )
     },
 

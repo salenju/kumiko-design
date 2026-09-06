@@ -7,6 +7,7 @@ import { computed } from 'vue'
 const props = defineProps({
   rubber: { type: Object, default: null }, // {x1,y1,x2,y2} mm
   draft: { type: Object, default: null }, // {kind:'family'|'line', ...}
+  dragHint: { type: Object, default: null }, // {x,y,text} 拖拽中的间距提示
   zoom: { type: Number, required: true }
 })
 
@@ -132,5 +133,27 @@ const lineDraftInfo = computed(() => {
         {{ lineDraftInfo.length.toFixed(1) }}
       </text>
     </template>
+
+    <!-- 拖拽中的间距提示 -->
+    <g v-if="dragHint" style="pointer-events: none">
+      <rect
+        :x="dragHint.x"
+        :y="dragHint.y - 18 / zoom"
+        :width="dragHint.text.length * 6.2 / zoom + 8 / zoom"
+        :height="16 / zoom"
+        rx="3 / zoom"
+        fill="rgba(255,247,224,0.92)"
+        stroke="#d4a017"
+        :stroke-width="1 / zoom"
+      />
+      <text
+        :x="dragHint.x + 4 / zoom"
+        :y="dragHint.y - 6 / zoom"
+        :font-size="10 / zoom"
+        fill="#7a5b00"
+      >
+        {{ dragHint.text }}
+      </text>
+    </g>
   </g>
 </template>
