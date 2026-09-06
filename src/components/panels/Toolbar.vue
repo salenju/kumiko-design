@@ -2,6 +2,8 @@
 /**
  * Toolbar —— 顶部工具（V2 §6 Toolbar.vue）
  */
+import { ref, nextTick } from 'vue'
+import { NModal, NCard, NInput, useMessage } from 'naive-ui'
 import { useUiStore } from '../../stores/ui.js'
 import { useHistoryStore } from '../../stores/history.js'
 import { useProjectStore } from '../../stores/project.js'
@@ -14,7 +16,6 @@ import {
 } from '../../utils/projectFile.js'
 import { saveProjectNow, clearPersistedProject } from '../../utils/persist.js'
 import { formatShortcut } from '../../utils/platform.js'
-import { useMessage } from 'naive-ui'
 
 const emit = defineEmits(['open-presets', 'open-ai', 'open-cutlist', 'fit'])
 const ui = useUiStore()
@@ -67,14 +68,30 @@ function newProject() {
   emit('fit')
 }
 
-/** 保存为项目文件（.kumiko.json 下载） */
-function saveFile() {
-  downloadProjectFile(project)
-  message.success('已导出项目文件（.kumiko.json）')
+/** 导出项目文件：先弹窗让用户输入导出文件名，再下载 .kumiko.json */
+const showExport = ref(false)
+const exportName = ref('')
+const exportInputRef = ref(null)
+
+function openExportDialog() {
+  exportName.value = ''
+  showExport.value = true
+  nextTick(() => exportInputRef.value?.focus())
 }
 
-/** 打开项目文件（替换当前项目，可撤销） */
-async function openFile() {
+function exportFile() {
+  const base = exportName.value.trim()
+  if (!base) {
+    message.warning('请输入导出文件名')
+    return
+  }
+  downloadProjectFile(project, base)
+  showExport.value = false
+  message.success(`已导出项目文件：${base}.kumiko.json`)
+}
+
+/** 导入项目文件（替换当前项目，可撤销） */
+async function importFile() {
   try {
     const text = await pickAndReadJsonFile()
     if (!text) return
@@ -83,10 +100,10 @@ async function openFile() {
       project.replaceAll(data)
       ui.clearSelection()
     })
-    message.success(`已打开项目：${data.patterns.length} 线族`)
+    message.success(`已导入项目：${data.patterns.length} 图案`)
     emit('fit')
   } catch (e) {
-    message.error(`打开失败：${e.message}`)
+    message.error(`导入失败：${e.message}`)
   }
 }
 
@@ -129,8 +146,8 @@ function toggleLabels() {
     <div class="tb-group" title="文件">
       <button class="tb-btn" title="新建空白项目（清空当前画布）" @click="newProject">＋ 新建</button>
       <button class="tb-btn" :title="`立即保存到浏览器本地（${formatShortcut(['mod', 's'])}）`" @click="saveLocal">💾 保存</button>
-      <button class="tb-btn" title="保存为项目文件 .kumiko.json（下载）" @click="saveFile">⇩ 另存文件</button>
-      <button class="tb-btn" title="打开 .kumiko.json 项目文件（替换当前项目，可撤销）" @click="openFile">⇧ 打开文件</button>
+      <button class="tb-btn" title="导出项目文件 .kumiko.json（先输入导出文件名）" @click="openExportDialog">⇩ 导出文件</button>
+      <button class="tb-btn" title="导入 .kumiko.json 项目文件（替换当前项目，可撤销）" @click="importFile">⇧ 导入文件</button>
     </div>
 
     <div class="tb-sep"></div>
@@ -171,6 +188,29 @@ function toggleLabels() {
       <span v-else-if="ui.tool === 'line'">· L 画单线（Esc 取消）| 空格=临时平移</span>
       <span v-else>· H 平移 / 空格+拖拽</span>
     </div>
+
+    <n-modal v-model:show="showExport" @update:show="(v) => (showExport = v)">
+      <n-card style="width: 440px; max-width: 92vw" title="导出项目文件" :bordered="false" size="medium">
+        <div class="tb-export">
+          <label>导出文件名</label>
+          <n-input
+            ref="exportInputRef"
+            v-model:value="exportName"
+            placeholder="如：麻叶纹 300"
+            :maxlength="120"
+            clearable
+            @keydown.enter.prevent="exportFile"
+          />
+          <div class="tb-export-note">将导出为 <code>&lt;名称&gt;.kumiko.json</code>（无需输入扩展名）；文件坐标/尺寸为真实 mm，可跨浏览器迁移或备份。</div>
+        </div>
+        <template #footer>
+          <div style="display: flex; justify-content: flex-end; gap: 8px">
+            <n-button @click="showExport = false">取消</n-button>
+            <n-button type="primary" :disabled="!exportName.trim()" @click="exportFile">导出</n-button>
+          </div>
+        </template>
+      </n-card>
+    </n-modal>
   </div>
 </template>
 
@@ -220,4 +260,8 @@ function toggleLabels() {
 .tb-btn.active .tb-key { border-color: #b7cdf0; color: #2a5fb8; }
 .tb-spacer { flex: 1; }
 .tb-status { font-size: 12px; color: #777; margin-left: 8px; white-space: nowrap; }
+.tb-export { display: flex; flex-direction: column; gap: 8px; }
+.tb-export label { font-size: 13px; color: #333; }
+.tb-export-note { font-size: 12px; color: #888; line-height: 1.5; }
+.tb-export-note code { background: #eef0f5; border-radius: 4px; padding: 0 4px; }
 </style>

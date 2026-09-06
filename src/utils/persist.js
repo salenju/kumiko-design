@@ -1,6 +1,6 @@
 /**
  * 纯数据持久化 util（V2 §8.6）
- * 只保存 project 的纯数据（patterns/material），不含派生段与 ui 态。
+ * 只保存 project 的纯数据（patterns/material/spacingUnit），不含派生段与 ui 态。
  * localStorage 容量 ~5MB；预留 storage 抽象便于日后切换 IndexedDB。
  */
 
@@ -35,6 +35,16 @@ export function loadPersistedProject() {
   return data
 }
 
+/** 从 project store 提取需要持久化的纯数据 */
+function toStorable(state) {
+  return {
+    version: state.version,
+    patterns: state.patterns,
+    material: state.material,
+    spacingUnit: state.spacingUnit
+  }
+}
+
 /**
  * 订阅 project store 变化并防抖持久化。
  * 用 $subscribe（默认 deep=false，本 store 顶层字段即 patterns 数组引用，
@@ -44,11 +54,7 @@ export function installPersistence(projectStore, delay = 400) {
   projectStore.$subscribe((_mutation, state) => {
     if (timer) clearTimeout(timer)
     timer = setTimeout(() => {
-      storage.set({
-        version: state.version,
-        patterns: state.patterns,
-        material: state.material
-      })
+      storage.set(toStorable(state))
     }, delay)
   })
 }
@@ -63,9 +69,5 @@ export function clearPersistedProject() {
 
 /** 立即把当前 project 状态写入 localStorage（不等待防抖） */
 export function saveProjectNow(projectStore) {
-  storage.set({
-    version: projectStore.version,
-    patterns: projectStore.patterns,
-    material: projectStore.material
-  })
+  storage.set(toStorable(projectStore.$state ?? projectStore))
 }

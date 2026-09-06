@@ -94,7 +94,8 @@ export function usePatternTool() {
     }
 
     if (d.radius < 15) return // 过小视为误点
-    const spacing = ui.snapGrid * 8 || 10 // 默认间距（可后续面板调整）
+    // 默认间距 = 1 × 全局间距单位（属性面板可改，见「间距」下拉）
+    const spacing = project.spacingUnit > 0 ? project.spacingUnit : 10
     const width = 3
     const bounds = {
       x: d.x - d.radius,

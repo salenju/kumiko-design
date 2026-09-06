@@ -190,4 +190,34 @@ describe('状态集成冒烟：store + composable + core 数据流', () => {
     expect(b.w).toBe(400)
     expect(b.h).toBe(400)
   })
+
+  it('全局间距单位：默认10、setSpacingUnit 可撤销、随快照往返', () => {
+    const project = useProjectStore()
+    const history = useHistoryStore()
+    expect(project.spacingUnit).toBe(10)
+
+    // 修改（可撤销）
+    history.beginEdit(() => project.setSpacingUnit(15))
+    expect(project.spacingUnit).toBe(15)
+    history.undo()
+    expect(project.spacingUnit).toBe(10)
+
+    // 非法值忽略
+    project.setSpacingUnit(0)
+    expect(project.spacingUnit).toBe(10)
+
+    // 快照 → 新 store 恢复（模拟 reload/undo/打开文件）
+    history.beginEdit(() => project.setSpacingUnit(25))
+    const snap = project.snapshot()
+    setActivePinia(createPinia())
+    const p2 = useProjectStore()
+    expect(p2.spacingUnit).toBe(10)
+    p2.restore(snap)
+    expect(p2.spacingUnit).toBe(25)
+
+    // 旧格式快照（无 spacingUnit）恢复 → replaceAll 回退：保持当前值不丢单位
+    const legacy = JSON.stringify({ version: 3, patterns: [], material: {} })
+    p2.restore(legacy)
+    expect(p2.spacingUnit).toBe(25)
+  })
 })

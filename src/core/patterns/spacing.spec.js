@@ -11,7 +11,10 @@ import {
   segOrientation,
   referenceParallel,
   equalSpacingHint,
-  parallelEndpointAlign
+  parallelEndpointAlign,
+  spacingRatio,
+  ratioToSpacing,
+  unitChoices
 } from './spacing.js'
 
 /** 构造水平/竖直/斜线段 */
@@ -232,5 +235,68 @@ describe('patterns/spacing 平行线间距', () => {
     expect(r.aligned).toBe(true)
     expect(r.sideOfBase).toBe('left')
     expect(r.end).toBe('min')
+  })
+})
+
+describe('patterns/spacing 间距 ↔ 全局单位倍数（Nx 下拉）', () => {
+  it('spacingRatio / ratioToSpacing：mm ↔ 倍数换算；单位非法回退原值', () => {
+    expect(spacingRatio(40, 10)).toBe(4)
+    expect(spacingRatio(40, 0)).toBe(40)
+    expect(spacingRatio(40, -10)).toBe(40)
+    expect(ratioToSpacing(4, 10)).toBe(40)
+    expect(ratioToSpacing(4, 0)).toBe(4)
+  })
+
+  it('unitChoices：整倍间距给出 1x..8x 并命中当前倍数', () => {
+    const r = unitChoices(40, 10)
+    expect(r).not.toBeNull()
+    expect(r.exact).toBe(true)
+    expect(r.ratio).toBe(4)
+    expect(r.choices.map((c) => c.value)).toEqual([1, 2, 3, 4, 5, 6, 7, 8])
+    expect(r.choices[3].label).toBe('4x')
+    expect(r.choices[3].mm).toBe(40)
+    expect(r.choices.some((c) => c.custom)).toBe(false)
+  })
+
+  it('unitChoices：非整倍间距追加 custom 保留项，前面仍是 1x..8x', () => {
+    const r = unitChoices(45, 10)
+    expect(r).not.toBeNull()
+    expect(r.exact).toBe(false)
+    expect(r.ratio).toBeCloseTo(4.5, 9)
+    const custom = r.choices.find((c) => c.custom)
+    expect(custom).toBeTruthy()
+    expect(custom.value).toBeCloseTo(4.5, 9)
+    expect(custom.mm).toBeCloseTo(45, 9)
+    expect(custom.label).toContain('4.5x')
+    expect(r.choices[0].label).toBe('1x')
+    expect(r.choices[7].label).toBe('8x')
+    // 自定义在列表末尾
+    expect(r.choices[r.choices.length - 1]).toBe(custom)
+  })
+
+  it('unitChoices：间距超 8x 自动向上扩展（120mm/10 → 1x..12x）', () => {
+    const r = unitChoices(120, 10)
+    expect(r).not.toBeNull()
+    expect(r.exact).toBe(true)
+    expect(r.ratio).toBe(12)
+    expect(r.choices.length).toBe(12)
+    expect(r.choices[11].label).toBe('12x')
+    expect(r.choices[11].mm).toBe(120)
+  })
+
+  it('unitChoices：单位换算（15mm/5 → 3x）与自定义小数单位', () => {
+    const r = unitChoices(15, 5)
+    expect(r.exact).toBe(true)
+    expect(r.ratio).toBe(3)
+    expect(r.choices[2].label).toBe('3x')
+  })
+
+  it('unitChoices：非法参数返回 null', () => {
+    expect(unitChoices(0, 10)).toBeNull()
+    expect(unitChoices(-5, 10)).toBeNull()
+    expect(unitChoices(40, 0)).toBeNull()
+    expect(unitChoices(40, -10)).toBeNull()
+    expect(unitChoices(NaN, 10)).toBeNull()
+    expect(unitChoices(40, NaN)).toBeNull()
   })
 })

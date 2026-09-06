@@ -16,22 +16,37 @@ export function buildProjectJson(projectStore) {
       version: projectStore.version,
       exportedAt: new Date().toISOString(),
       patterns: projectStore.patterns,
-      material: projectStore.material
+      material: projectStore.material,
+      spacingUnit: projectStore.spacingUnit
     },
     null,
     2
   )
 }
 
-/** 触发下载项目文件 */
-export function downloadProjectFile(projectStore) {
+/** 非法文件名字符 → 下划线（跨平台安全），并裁首尾空白/点号 */
+export function sanitizeFileBase(name) {
+  return String(name ?? '')
+    .replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_')
+    .trim()
+    .replace(/^\.+/, '')
+    .replace(/\.+$/, '')
+}
+
+/**
+ * 触发下载项目文件。
+ * @param {object} projectStore project store
+ * @param {string} [fileName] 用户输入的文件名（不含扩展名）；缺省时用时间戳命名
+ */
+export function downloadProjectFile(projectStore, fileName) {
   const json = buildProjectJson(projectStore)
   const blob = new Blob([json], { type: 'application/json;charset=utf-8' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
+  const base = sanitizeFileBase(fileName)
   const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
   a.href = url
-  a.download = `kumiko-design-${ts}.kumiko.json`
+  a.download = base ? `${base}.kumiko.json` : `kumiko-design-${ts}.kumiko.json`
   document.body.appendChild(a)
   a.click()
   a.remove()
@@ -53,7 +68,13 @@ export function parseProjectJson(text) {
   if (!data || !Array.isArray(data.patterns)) {
     throw new Error('缺少 patterns 数据，不是 kumiko-design 项目文件')
   }
-  return { patterns: data.patterns, material: data.material || {} }
+  const spacingUnit = Number(data.spacingUnit)
+  return {
+    patterns: data.patterns,
+    material: data.material || {},
+    // 旧版本文件无 spacingUnit → undefined，replaceAll 时会回退默认 10
+    spacingUnit: Number.isFinite(spacingUnit) && spacingUnit > 0 ? spacingUnit : undefined
+  }
 }
 
 /** 浏览器打开文件选择器并读取文本 */

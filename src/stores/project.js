@@ -7,17 +7,20 @@ import { deriveSegments, segmentsBounds, translatePattern } from '../core/index.
  *   - kind:'family'  平行线族（参数化，求交派生）
  *   - kind:'line'    单根独立线段 { x1,y1,x2,y2,width }（不参与求交，直接作为一段渲染/算料）
  *   - material 材料规格
+ *   - spacingUnit 全局间距单位 mm（默认 10）：线族「间距」/单线「相邻线间距」
+ *     按该单位的整数倍（Nx）设置，见 core/patterns/spacing.js 的换算与下拉选项。
  * 派生 segments 由 getter 实时计算（响应式缓存），不入 state、不持久化。
  */
 export const useProjectStore = defineStore('project', {
   state: () => ({
-    version: 3,
+    version: 4,
     patterns: [],
     material: {
       stockLength: 1200, // 标准条长 mm
       kerf: 1.5, // 锯缝 mm
       endAllowance: 2 // 每端端部处理余量 mm（45° 斜切近似）
-    }
+    },
+    spacingUnit: 10 // 全局间距单位 mm（1x = 1 × spacingUnit）
   }),
 
   getters: {
@@ -97,10 +100,22 @@ export const useProjectStore = defineStore('project', {
       this.material = { ...this.material, ...patch }
     },
 
-    /** 整体替换（undo/redo/加载用） */
-    replaceAll({ patterns, material }) {
-      this.patterns = patterns ?? []
+    /** 设置全局间距单位 mm（>0 生效；面板负责会话级撤销） */
+    setSpacingUnit(v) {
+      const n = Number(v)
+      if (Number.isFinite(n) && n > 0) this.spacingUnit = n
+    },
+
+    /**
+     * 整体替换（undo/redo/加载用）。
+     * 兼容旧数据：某字段缺失时保持当前值（spacingUnit 缺省=默认 10）。
+     */
+    replaceAll({ patterns, material, spacingUnit }) {
+      if (Array.isArray(patterns)) this.patterns = patterns
       if (material) this.material = { ...this.material, ...material }
+      if (typeof spacingUnit === 'number' && Number.isFinite(spacingUnit) && spacingUnit > 0) {
+        this.spacingUnit = spacingUnit
+      }
     },
 
     /** 返回可序列化快照（纯 JSON 字符串） */
@@ -108,7 +123,8 @@ export const useProjectStore = defineStore('project', {
       return JSON.stringify({
         version: this.version,
         patterns: this.patterns,
-        material: this.material
+        material: this.material,
+        spacingUnit: this.spacingUnit
       })
     },
 

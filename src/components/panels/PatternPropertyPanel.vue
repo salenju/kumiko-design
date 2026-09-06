@@ -6,10 +6,11 @@
  * 编辑会话（撤销粒度=一次字段编辑）：
  *   focus 记录变更前快照 → 输入/步进实时或失焦应用 → blur/回车提交会话。
  *   - live 字段（坐标、族参数）：每次输入即时更新 store，blur 时若有变化入栈；
- *   - commit 字段（单线长度/角度/相邻间距）：失焦或回车才应用，随后入栈。
+ *   - commit 字段（单线长度/角度）：失焦或回车才应用，随后入栈；
+ *   - x 倍数下拉（线族间距 / 单线相邻线间距）：选中即应用「Nx = N × 全局间距单位」。
  */
 import { ref, computed } from 'vue'
-import { NButton } from 'naive-ui'
+import { NButton, NSelect } from 'naive-ui'
 import { useProjectStore } from '../../stores/project.js'
 import { useUiStore } from '../../stores/ui.js'
 import { useHistoryStore } from '../../stores/history.js'
@@ -21,8 +22,11 @@ import {
 } from '../../core/geometry/index.js'
 import {
   movePatternToSpacing,
+  ratioToSpacing,
   referenceParallel,
-  segOrientation
+  segOrientation,
+  spacingRatio,
+  unitChoices
 } from '../../core/patterns/index.js'
 import KNumberField from './KNumberField.vue'
 
@@ -44,6 +48,13 @@ function onFieldCommit() {
     startSnapshot.value = null
     if (project.snapshot() !== before) history.push(before)
   }
+}
+
+/** 下拉等「选中即应用」字段：保证会话已开启，执行变更后统一收尾入栈 */
+function applyUndoable(mutate) {
+  if (!startSnapshot.value) startSnapshot.value = project.snapshot()
+  mutate()
+  onFieldCommit()
 }
 
 function updatePattern(id, patch) {
@@ -104,7 +115,11 @@ function commitLineAngle(p, v) {
   onFieldCommit()
 }
 
-/* ---------- 相邻平行线间距（单线） ---------- */
+/* ---------- 间距按全局单位 Nx 倍数（线族「间距」+ 单线「相邻线间距」） ---------- */
+/**
+ * 全局间距单位 spacingUnit（默认 10mm，见「算料 → 全局间距单位」）。
+ * 面板上间距一律以 Nx 下拉设置：Nx = N × spacingUnit。
+ */
 
 function linePatternAsSeg(p) {
   return { id: p.id, x1: p.x1, y1: p.y1, x2: p.x2, y2: p.y2, patternId: p.id }
@@ -128,33 +143,71 @@ function adjacentDistance(p) {
 function adjacentHint(p) {
   const near = adjacentParallel(p)
   if (!near) return '该方向无相邻平行线'
-  if (near.side === 'up') return '基准：上方相邻线（输入后本线保持其下方）'
-  if (near.side === 'left') return '基准：左侧相邻线（输入后本线保持其右侧）'
+  if (near.side === 'up') return '基准：上方相邻线（选择倍数后本线保持其下方）'
+  if (near.side === 'left') return '基准：左侧相邻线（选择倍数后本线保持其右侧）'
   return '基准：最近的相邻平行线'
 }
 
 function adjacentLabel(p) {
   const o = segOrientation(linePatternAsSeg(p))
-  if (o === 'h') return '相邻线间距（基准=上方）mm'
-  if (o === 'v') return '相邻线间距（基准=左侧）mm'
-  return '相邻线间距（基准=最近）mm'
+  if (o === 'h') return '相邻线间距（基准=上方）'
+  if (o === 'v') return '相邻线间距（基准=左侧）'
+  return '相邻线间距（基准=最近）'
 }
 
+/** mm 间距 → 当前 Nx 值（供下拉回显；无相邻线/非法返回 null） */
+function ratioOf(mm) {
+  return spacingRatio(mm, project.spacingUnit)
+}
+
+/** 下拉选项：恒定 1x..8x，当前间距超出时向上扩展；非整倍补一条当前值 */
+function choicesOf(mm) {
+  const r = unitChoices(mm, project.spacingUnit)
+  return r ? r.choices : []
+}
+
+/** 线族间距：mm → 倍数（回显值） */
+function familyRatio(p) {
+  return p.spacing > 0 ? ratioOf(p.spacing) : null
+}
+function familyChoices(p) {
+  return p.spacing > 0 ? choicesOf(p.spacing) : []
+}
+
+/** 单线相邻线间距：mm → 倍数（回显值） */
+function adjacentRatio(p) {
+  const d = adjacentDistance(p)
+  return d !== null && d > 0 ? ratioOf(d) : null
+}
+function adjacentChoices(p) {
+  const d = adjacentDistance(p)
+  return d !== null && d > 0 ? choicesOf(d) : []
+}
+
+/** 线族间距应用：选择 Nx → spacing = N × unit */
+function commitFamilySpacing(p, v) {
+  const mm = ratioToSpacing(Number(v), project.spacingUnit)
+  if (!Number.isFinite(mm) || mm <= 0) return
+  applyUndoable(() => updatePattern(p.id, { spacing: mm }))
+}
+
+/** 单线相邻线间距应用：选择 Nx → 本线移动到与基准线间距 = N × unit */
 function commitAdjacent(p, v) {
-  const val = Number(v)
   const near = adjacentParallel(p)
-  if (near && Number.isFinite(val) && val > 0) {
-    const moved = movePatternToSpacing(p, near.other, val)
-    if (moved) {
-      updatePattern(p.id, {
-        x1: moved.x1,
-        y1: moved.y1,
-        x2: moved.x2,
-        y2: moved.y2
-      })
+  const mm = ratioToSpacing(Number(v), project.spacingUnit)
+  applyUndoable(() => {
+    if (near && Number.isFinite(mm) && mm > 0) {
+      const moved = movePatternToSpacing(p, near.other, mm)
+      if (moved) {
+        updatePattern(p.id, {
+          x1: moved.x1,
+          y1: moved.y1,
+          x2: moved.x2,
+          y2: moved.y2
+        })
+      }
     }
-  }
-  onFieldCommit()
+  })
 }
 </script>
 
@@ -171,6 +224,10 @@ function commitAdjacent(p, v) {
         <tr>
           <td>木条总长</td>
           <td>{{ project.totalSegmentLength.toFixed(1) }} mm</td>
+        </tr>
+        <tr>
+          <td>全局间距单位</td>
+          <td>{{ project.spacingUnit }} mm（改：算料抽屉）</td>
         </tr>
       </table>
       <p class="pp-hint">提示：点选线段选中其所属图案并编辑；Ctrl/Shift+点选多选；Delete 删除。</p>
@@ -230,19 +287,20 @@ function commitAdjacent(p, v) {
           </div>
           <div class="pp-hint2">0°=水平向右，90°=竖直向下（同画线方向）；改长度保持角度，改角度保持长度。</div>
           <div class="pp-field">
-            <label>{{ adjacentLabel(p) }}</label>
-            <k-number-field
-              :value="adjacentDistance(p)"
-              :step="0.5"
-              :min="0.1"
+            <label>{{ adjacentLabel(p) }}（Nx = N × {{ project.spacingUnit }}mm）</label>
+            <n-select
+              :value="adjacentRatio(p)"
+              :options="adjacentChoices(p)"
               :disabled="!adjacentParallel(p)"
-              :placeholder="adjacentParallel(p) ? '' : '该方向无相邻线'"
-              :live="false"
+              :placeholder="adjacentParallel(p) ? `选择倍数，如 4x = ${project.spacingUnit * 4}mm` : '该方向无相邻线'"
+              size="small"
+              style="width: 100%"
               @focus="onFieldFocus"
-              @commit="commitAdjacent(p, $event)"
+              @update:value="commitAdjacent(p, $event)"
+              @blur="onFieldCommit"
             />
           </div>
-          <div class="pp-hint2">{{ adjacentHint(p) }}；输入目标间距回车/失焦后本线沿基准线法向移动至该间距（保持在基准线的同一侧）。</div>
+          <div class="pp-hint2">{{ adjacentHint(p) }}；选择 Nx 后本线沿基准线法向移动至 N × 单位 的间距（保持在基准线的同一侧）。</div>
           <div class="pp-sub">终点（微调）</div>
           <div class="pp-bounds">
             <div class="pp-field half">
@@ -267,8 +325,18 @@ function commitAdjacent(p, v) {
             <k-number-field :value="p.angle" :step="15" @focus="onFieldFocus" @input="updatePattern(p.id, { angle: $event })" @commit="onFieldCommit" />
           </div>
           <div class="pp-field">
-            <label>间距 mm</label>
-            <k-number-field :value="p.spacing" :step="1" :min="0.1" @focus="onFieldFocus" @input="updatePattern(p.id, { spacing: $event })" @commit="onFieldCommit" />
+            <label>间距（Nx = N × {{ project.spacingUnit }}mm）</label>
+            <n-select
+              :value="familyRatio(p)"
+              :options="familyChoices(p)"
+              :placeholder="`1x = ${project.spacingUnit}mm`"
+              size="small"
+              style="width: 100%"
+              @focus="onFieldFocus"
+              @update:value="commitFamilySpacing(p, $event)"
+              @blur="onFieldCommit"
+            />
+            <div class="pp-hint2">相邻木条中心距按全局单位整数倍设置；想整体调密/调疏就改它。改单位见「算料 → 全局间距单位」。</div>
           </div>
           <div class="pp-field">
             <label>条数</label>

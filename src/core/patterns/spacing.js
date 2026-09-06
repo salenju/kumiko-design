@@ -351,3 +351,59 @@ export function movePatternToSpacing(pattern, refSeg, targetSpacing) {
   const move = side * Math.abs(targetSpacing) - signed
   return translatePattern(pattern, move * ndx, move * ndy)
 }
+
+/* ============ 间距 ↔ 全局单位倍数（属性面板换算/下拉选项） ============ */
+/**
+ * 组子图案习惯按同一个「全局基本单位」布排（相邻线/线族间距 = N × 单位）。
+ * 以下纯函数支撑属性面板的「Nx 倍数」显示与下拉选择：
+ *   spacingRatio(mm, unit)  —— mm 间距 → 单位倍数（如 40mm / 10mm = 4）
+ *   ratioToSpacing(N, unit) —— 单位倍数 → mm 间距
+ *   unitChoices(...)        —— 生成下拉选项（1x..baseMax x，必要时向上扩展）
+ */
+
+/** 显示用数值：四舍五入到 4 位小数并去尾零（消除浮点尾巴） */
+function fmtDim(v) {
+  return String(Math.round(v * 1e4) / 1e4)
+}
+
+/** mm 间距 → 全局单位倍数（单位非法时原样返回 mm 值） */
+export function spacingRatio(spacing, unit) {
+  if (!Number.isFinite(spacing)) return spacing
+  if (!Number.isFinite(unit) || unit <= 0) return spacing
+  return spacing / unit
+}
+
+/** 全局单位倍数 → mm 间距（单位非法时原样返回倍数） */
+export function ratioToSpacing(ratio, unit) {
+  if (!Number.isFinite(ratio)) return ratio
+  if (!Number.isFinite(unit) || unit <= 0) return ratio
+  return ratio * unit
+}
+
+/**
+ * 为当前间距生成「Nx 整数倍×单位」下拉选项。
+ * - 恒定提供 1x..baseMax(默认 8)x 的整数倍选项；
+ * - 若当前间距超过 baseMax 倍，自动向上扩展直到覆盖（上限 hardMax 防爆列表）；
+ * - 当前间距若不是单位整数倍（历史遗留/自定义值），追加一条 custom 选项原样保留，
+ *   避免面板无法表示/静默改动既有间距。
+ * @returns {{ choices:Array<{value:number,label:string,mm:number,custom?:boolean}>, ratio:number, exact:boolean }|null}
+ *   参数非法（间距/单位非正）返回 null
+ */
+export function unitChoices(spacing, unit, baseMax = 8, hardMax = 200) {
+  if (!Number.isFinite(spacing) || spacing <= 0) return null
+  if (!Number.isFinite(unit) || unit <= 0) return null
+  const ratio = spacing / unit
+  const cap = Math.max(Math.floor(baseMax), Math.ceil(ratio - 1e-9))
+  const limit = Math.min(cap, Math.max(1, Math.floor(hardMax)))
+  const choices = []
+  for (let n = 1; n <= limit; n++) {
+    choices.push({ value: n, label: `${n}x`, mm: n * unit })
+  }
+  const nearest = Math.round(ratio)
+  const exact = nearest >= 1 && nearest <= limit && Math.abs(ratio - nearest) < 1e-6
+  if (!exact) {
+    // 非整数倍（或超出扩展上限）→ 保留一条当前值选项
+    choices.push({ value: ratio, label: `${fmtDim(ratio)}x（当前 ${fmtDim(spacing)}mm）`, mm: spacing, custom: true })
+  }
+  return { choices, ratio, exact }
+}
