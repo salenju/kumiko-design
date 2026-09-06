@@ -1,10 +1,15 @@
 <script setup>
 /**
  * PatternPropertyPanel —— 右侧属性面板（V2 §6 panels）
- * 选中线族的参数编辑。编辑会话：focus 记录变更前快照，blur/change 时有实际变化才入撤销栈
- * （一次连续编辑 = 一条历史，符合 V2 §8.2 粒度）。
+ * 使用 naive-ui 组件（NButton / 封装的 n-input-number）。
+ *
+ * 编辑会话（撤销粒度=一次字段编辑）：
+ *   focus 记录变更前快照 → 输入/步进实时或失焦应用 → blur/回车提交会话。
+ *   - live 字段（坐标、族参数）：每次输入即时更新 store，blur 时若有变化入栈；
+ *   - commit 字段（单线长度/角度/相邻间距）：失焦或回车才应用，随后入栈。
  */
 import { ref, computed } from 'vue'
+import { NButton } from 'naive-ui'
 import { useProjectStore } from '../../stores/project.js'
 import { useUiStore } from '../../stores/ui.js'
 import { useHistoryStore } from '../../stores/history.js'
@@ -14,7 +19,12 @@ import {
   endFromPolar,
   length
 } from '../../core/geometry/index.js'
-import { nearestParallelSegment, movePatternToSpacing, referenceParallel, segOrientation } from '../../core/patterns/index.js'
+import {
+  movePatternToSpacing,
+  referenceParallel,
+  segOrientation
+} from '../../core/patterns/index.js'
+import KNumberField from './KNumberField.vue'
 
 const project = useProjectStore()
 const ui = useUiStore()
@@ -23,23 +33,30 @@ const selection = useSelection()
 
 const startSnapshot = ref(null)
 
-/** 每个字段会话：focus 记录起点 */
+/** 字段会话开始：记录编辑前快照 */
 function onFieldFocus() {
   if (!startSnapshot.value) startSnapshot.value = project.snapshot()
 }
-/** blur/change：若有变化则把起点快照入栈（允许撤销到编辑前） */
-function onFieldChange() {
+/** 字段会话结束：若有变化则入撤销栈 */
+function onFieldCommit() {
   if (startSnapshot.value) {
     const before = startSnapshot.value
     startSnapshot.value = null
-    if (project.snapshot() !== before) {
-      history.push(before)
-    }
+    if (project.snapshot() !== before) history.push(before)
   }
 }
 
 function updatePattern(id, patch) {
   project.updatePattern(id, patch)
+}
+
+/** naive 输入值可能是 null/越界 → 归一为有效数值 */
+function num(v, fallback = 0) {
+  const n = Number(v)
+  return Number.isFinite(n) ? n : fallback
+}
+function setCount(p, v) {
+  updatePattern(p.id, { count: Math.max(1, Math.round(num(v, p.count))) })
 }
 
 function segsOfPattern(id) {
@@ -62,71 +79,38 @@ function removePatterns(ids) {
 
 /* ---------- 单线（kind:line）长度/角度 辅助 ---------- */
 
-/** 单线当前长度 mm（从两端点） */
 function lineLength(p) {
   return length(p.x1, p.y1, p.x2, p.y2)
 }
-
-/** 单线当前有向角度 °（0=水平右，90=竖直下；y-down 与画线一致） */
 function lineAngleDeg(p) {
   return angleDegOfVector(p.x2 - p.x1, p.y2 - p.y1)
 }
 
-/**
- * 以「长度」更新终点：保持起点 (x1,y1) 与当前角度不变。
- * @returns {boolean} 是否产生了有效更新
- */
-function updateLineByLength(p, v) {
+/** 单线显示值：画布可能 0 长度 → 显示 0 */
+function commitLineLength(p, v) {
   const len = Number(v)
-  if (!Number.isFinite(len) || len <= 0) return false
-  const a = lineAngleDeg(p)
-  const end = endFromPolar(p.x1, p.y1, len, a)
-  updatePattern(p.id, end)
-  return true
+  if (Number.isFinite(len) && len > 0) {
+    const a = lineAngleDeg(p)
+    updatePattern(p.id, endFromPolar(p.x1, p.y1, len, a))
+  }
+  onFieldCommit()
 }
-
-/**
- * 以「角度」更新终点：保持起点 (x1,y1) 与当前长度不变。
- * @returns {boolean} 是否产生了有效更新
- */
-function updateLineByAngle(p, v) {
+function commitLineAngle(p, v) {
   const a = Number(v)
-  if (!Number.isFinite(a)) return false
   const cur = lineLength(p)
-  if (cur <= 0) return false // 零长线段无方向，拒绝旋转
-  const end = endFromPolar(p.x1, p.y1, cur, a)
-  updatePattern(p.id, end)
-  return true
-}
-
-/**
- * 长度输入：change/blur 时一次性应用并记录撤销（避免输入过程被重算打断）；
- * 无效输入回填当前显示值。
- */
-function onLineLengthChange(p, e) {
-  const ok = updateLineByLength(p, e.target.value)
-  if (!ok) e.target.value = lineLength(p).toFixed(1)
-  onFieldChange()
-}
-
-/** 角度输入：change/blur 时一次性应用并记录撤销 */
-function onLineAngleChange(p, e) {
-  const ok = updateLineByAngle(p, e.target.value)
-  if (!ok) e.target.value = lineAngleDeg(p).toFixed(1)
-  onFieldChange()
+  if (Number.isFinite(a) && cur > 0) {
+    updatePattern(p.id, endFromPolar(p.x1, p.y1, cur, a))
+  }
+  onFieldCommit()
 }
 
 /* ---------- 相邻平行线间距（单线） ---------- */
 
-/** 把单线 pattern 转成线段结构 */
 function linePatternAsSeg(p) {
   return { id: p.id, x1: p.x1, y1: p.y1, x2: p.x2, y2: p.y2, patternId: p.id }
 }
 
-/**
- * 找与选中图案相邻的参考平行线（基准规则：横线=上方，竖线=左侧，斜线=最近）。
- * 排除自身图案的段。返回 { other, distance, side } 或 null。
- */
+/** 找基准参考线（横线=上方、竖线=左侧、斜线=最近），排除自身图案 */
 function adjacentParallel(p) {
   const mine = new Set(
     project.segments.filter((s) => s.patternId === p.id).map((s) => s.id)
@@ -136,16 +120,19 @@ function adjacentParallel(p) {
   return referenceParallel(seg, others, { tolDeg: 1 })
 }
 
-/** 相邻间距输入框的提示文字（按基准规则） */
+function adjacentDistance(p) {
+  const near = adjacentParallel(p)
+  return near ? near.distance : null
+}
+
 function adjacentHint(p) {
   const near = adjacentParallel(p)
-  if (!near) return '无相邻平行线'
+  if (!near) return '该方向无相邻平行线'
   if (near.side === 'up') return '基准：上方相邻线（输入后本线保持其下方）'
   if (near.side === 'left') return '基准：左侧相邻线（输入后本线保持其右侧）'
   return '基准：最近的相邻平行线'
 }
 
-/** 单线方向的基准标签：横线→上方，竖线→左侧，斜线→最近 */
 function adjacentLabel(p) {
   const o = segOrientation(linePatternAsSeg(p))
   if (o === 'h') return '相邻线间距（基准=上方）mm'
@@ -153,16 +140,11 @@ function adjacentLabel(p) {
   return '相邻线间距（基准=最近）mm'
 }
 
-/**
- * 相邻间距输入（change/blur 应用）：把单线整体移动，使该线与基准
- * 参考线间距 = 输入值（横线基准=上方线、竖线基准=左侧线，保持原本一侧）。
- */
-function onLineSpacingChange(p, e) {
-  const v = Number(e.target.value)
+function commitAdjacent(p, v) {
+  const val = Number(v)
   const near = adjacentParallel(p)
-  const ok = near && Number.isFinite(v) && v > 0
-  if (ok) {
-    const moved = movePatternToSpacing(p, near.other, v)
+  if (near && Number.isFinite(val) && val > 0) {
+    const moved = movePatternToSpacing(p, near.other, val)
     if (moved) {
       updatePattern(p.id, {
         x1: moved.x1,
@@ -172,9 +154,7 @@ function onLineSpacingChange(p, e) {
       })
     }
   }
-  const nearAfter = adjacentParallel(p)
-  e.target.value = nearAfter ? nearAfter.distance.toFixed(1) : ''
-  onFieldChange()
+  onFieldCommit()
 }
 </script>
 
@@ -208,66 +188,75 @@ function onLineSpacingChange(p, e) {
         <div class="pp-card-head">
           <span class="pp-card-title">{{ p.kind === 'line' ? '线段' : '线族' }} {{ p.id.slice(-5) }}</span>
           <div class="pp-card-ops">
-            <button class="mini-btn" title="复制" @click="selection.duplicateSelected()">⧉</button>
-            <button class="mini-btn danger" title="删除" @click="removePatterns([p.id])">🗑</button>
+            <n-button size="tiny" quaternary title="复制" @click="selection.duplicateSelected()">⧉</n-button>
+            <n-button size="tiny" quaternary type="error" title="删除" @click="removePatterns([p.id])">🗑</n-button>
           </div>
         </div>
 
-        <!-- 单根线段：起点 + 长度/角度（以起点为轴），或直接改终点 -->
+        <!-- 单根线段 -->
         <template v-if="p.kind === 'line'">
           <div class="pp-sub">起点（编辑时保持不动）</div>
           <div class="pp-bounds">
-            <div class="pp-field half"><label>X1</label><input type="number" step="0.1" :value="p.x1" @focus="onFieldFocus" @change="onFieldChange" @input="updatePattern(p.id, { x1: Number($event.target.value) })" /></div>
-            <div class="pp-field half"><label>Y1</label><input type="number" step="0.1" :value="p.y1" @focus="onFieldFocus" @change="onFieldChange" @input="updatePattern(p.id, { y1: Number($event.target.value) })" /></div>
+            <div class="pp-field half">
+              <label>X1</label>
+              <k-number-field :value="p.x1" :step="0.1" @focus="onFieldFocus" @input="updatePattern(p.id, { x1: $event })" @commit="onFieldCommit" />
+            </div>
+            <div class="pp-field half">
+              <label>Y1</label>
+              <k-number-field :value="p.y1" :step="0.1" @focus="onFieldFocus" @input="updatePattern(p.id, { y1: $event })" @commit="onFieldCommit" />
+            </div>
           </div>
           <div class="pp-sub">长度与角度（由起点指向终点）</div>
           <div class="pp-field">
             <label>长度 mm</label>
-            <input
-              type="number"
-              step="0.5"
-              min="0.1"
-              :value="lineLength(p).toFixed(1)"
+            <k-number-field
+              :value="lineLength(p)"
+              :step="0.5"
+              :min="0.1"
+              :live="false"
               @focus="onFieldFocus"
-              @change="onLineLengthChange(p, $event)"
-              @keydown.enter.prevent="$event.target.blur()"
+              @commit="commitLineLength(p, $event)"
             />
           </div>
           <div class="pp-field">
             <label>角度 °</label>
-            <input
-              type="number"
-              step="1"
-              :value="lineAngleDeg(p).toFixed(1)"
+            <k-number-field
+              :value="lineAngleDeg(p)"
+              :step="1"
+              :live="false"
               @focus="onFieldFocus"
-              @change="onLineAngleChange(p, $event)"
-              @keydown.enter.prevent="$event.target.blur()"
+              @commit="commitLineAngle(p, $event)"
             />
           </div>
           <div class="pp-hint2">0°=水平向右，90°=竖直向下（同画线方向）；改长度保持角度，改角度保持长度。</div>
           <div class="pp-field">
             <label>{{ adjacentLabel(p) }}</label>
-            <input
-              type="number"
-              step="0.5"
-              min="0.1"
-              :value="adjacentParallel(p) ? adjacentParallel(p).distance.toFixed(1) : ''"
+            <k-number-field
+              :value="adjacentDistance(p)"
+              :step="0.5"
+              :min="0.1"
               :disabled="!adjacentParallel(p)"
               :placeholder="adjacentParallel(p) ? '' : '该方向无相邻线'"
+              :live="false"
               @focus="onFieldFocus"
-              @change="onLineSpacingChange(p, $event)"
-              @keydown.enter.prevent="$event.target.blur()"
+              @commit="commitAdjacent(p, $event)"
             />
           </div>
           <div class="pp-hint2">{{ adjacentHint(p) }}；输入目标间距回车/失焦后本线沿基准线法向移动至该间距（保持在基准线的同一侧）。</div>
           <div class="pp-sub">终点（微调）</div>
           <div class="pp-bounds">
-            <div class="pp-field half"><label>X2</label><input type="number" step="0.1" :value="p.x2" @focus="onFieldFocus" @change="onFieldChange" @input="updatePattern(p.id, { x2: Number($event.target.value) })" /></div>
-            <div class="pp-field half"><label>Y2</label><input type="number" step="0.1" :value="p.y2" @focus="onFieldFocus" @change="onFieldChange" @input="updatePattern(p.id, { y2: Number($event.target.value) })" /></div>
+            <div class="pp-field half">
+              <label>X2</label>
+              <k-number-field :value="p.x2" :step="0.1" @focus="onFieldFocus" @input="updatePattern(p.id, { x2: $event })" @commit="onFieldCommit" />
+            </div>
+            <div class="pp-field half">
+              <label>Y2</label>
+              <k-number-field :value="p.y2" :step="0.1" @focus="onFieldFocus" @input="updatePattern(p.id, { y2: $event })" @commit="onFieldCommit" />
+            </div>
           </div>
           <div class="pp-field">
             <label>木条宽 mm</label>
-            <input type="number" step="0.5" min="0.1" :value="p.width" @focus="onFieldFocus" @change="onFieldChange" @input="updatePattern(p.id, { width: Number($event.target.value) })" />
+            <k-number-field :value="p.width" :step="0.1" :min="0.1" @focus="onFieldFocus" @input="updatePattern(p.id, { width: $event })" @commit="onFieldCommit" />
           </div>
         </template>
 
@@ -275,59 +264,27 @@ function onLineSpacingChange(p, e) {
         <template v-else>
           <div class="pp-field">
             <label>角度 °</label>
-            <input
-              type="number"
-              step="15"
-              :value="p.angle"
-              @focus="onFieldFocus"
-              @change="onFieldChange"
-              @input="updatePattern(p.id, { angle: Number($event.target.value) })"
-            />
+            <k-number-field :value="p.angle" :step="15" @focus="onFieldFocus" @input="updatePattern(p.id, { angle: $event })" @commit="onFieldCommit" />
           </div>
           <div class="pp-field">
             <label>间距 mm</label>
-            <input
-              type="number"
-              step="1"
-              min="0.1"
-              :value="p.spacing"
-              @focus="onFieldFocus"
-              @change="onFieldChange"
-              @input="updatePattern(p.id, { spacing: Number($event.target.value) })"
-            />
+            <k-number-field :value="p.spacing" :step="1" :min="0.1" @focus="onFieldFocus" @input="updatePattern(p.id, { spacing: $event })" @commit="onFieldCommit" />
           </div>
           <div class="pp-field">
             <label>条数</label>
-            <input
-              type="number"
-              step="1"
-              min="1"
-              max="2000"
-              :value="p.count"
-              @focus="onFieldFocus"
-              @change="onFieldChange"
-              @input="updatePattern(p.id, { count: Math.max(1, Math.round(Number($event.target.value))) })"
-            />
+            <k-number-field :value="p.count" :step="1" :min="1" :max="2000" @focus="onFieldFocus" @input="setCount(p, $event)" @commit="onFieldCommit" />
           </div>
           <div class="pp-field">
             <label>木条宽 mm</label>
-            <input
-              type="number"
-              step="0.5"
-              min="0.1"
-              :value="p.width"
-              @focus="onFieldFocus"
-              @change="onFieldChange"
-              @input="updatePattern(p.id, { width: Number($event.target.value) })"
-            />
+            <k-number-field :value="p.width" :step="0.1" :min="0.1" @focus="onFieldFocus" @input="updatePattern(p.id, { width: $event })" @commit="onFieldCommit" />
           </div>
 
           <div class="pp-sub">绘制范围 bounds（mm）</div>
           <div class="pp-bounds">
-            <div class="pp-field half"><label>X</label><input type="number" step="5" :value="p.bounds.x" @focus="onFieldFocus" @change="onFieldChange" @input="updatePattern(p.id, { bounds: { ...p.bounds, x: Number($event.target.value) } })" /></div>
-            <div class="pp-field half"><label>Y</label><input type="number" step="5" :value="p.bounds.y" @focus="onFieldFocus" @change="onFieldChange" @input="updatePattern(p.id, { bounds: { ...p.bounds, y: Number($event.target.value) } })" /></div>
-            <div class="pp-field half"><label>宽</label><input type="number" step="5" min="1" :value="p.bounds.w" @focus="onFieldFocus" @change="onFieldChange" @input="updatePattern(p.id, { bounds: { ...p.bounds, w: Number($event.target.value) } })" /></div>
-            <div class="pp-field half"><label>高</label><input type="number" step="5" min="1" :value="p.bounds.h" @focus="onFieldFocus" @change="onFieldChange" @input="updatePattern(p.id, { bounds: { ...p.bounds, h: Number($event.target.value) } })" /></div>
+            <div class="pp-field half"><label>X</label><k-number-field :value="p.bounds.x" :step="5" @focus="onFieldFocus" @input="updatePattern(p.id, { bounds: { ...p.bounds, x: $event } })" @commit="onFieldCommit" /></div>
+            <div class="pp-field half"><label>Y</label><k-number-field :value="p.bounds.y" :step="5" @focus="onFieldFocus" @input="updatePattern(p.id, { bounds: { ...p.bounds, y: $event } })" @commit="onFieldCommit" /></div>
+            <div class="pp-field half"><label>宽</label><k-number-field :value="p.bounds.w" :step="5" :min="1" @focus="onFieldFocus" @input="updatePattern(p.id, { bounds: { ...p.bounds, w: $event } })" @commit="onFieldCommit" /></div>
+            <div class="pp-field half"><label>高</label><k-number-field :value="p.bounds.h" :step="5" :min="1" @focus="onFieldFocus" @input="updatePattern(p.id, { bounds: { ...p.bounds, h: $event } })" @commit="onFieldCommit" /></div>
           </div>
 
           <div class="pp-stats">
@@ -337,7 +294,9 @@ function onLineSpacingChange(p, e) {
         </template>
       </div>
 
-      <button class="pp-delete-all" @click="removePatterns([...ui.selectedPatternIds])">删除全部选中</button>
+      <n-button block type="error" secondary size="small" @click="removePatterns([...ui.selectedPatternIds])">
+        删除全部选中
+      </n-button>
     </div>
   </div>
 </template>
@@ -350,24 +309,16 @@ function onLineSpacingChange(p, e) {
 .pp-card { border: 1px solid var(--kd-border); border-radius: 8px; padding: 8px; margin-bottom: 10px; background: #fff; }
 .pp-card-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
 .pp-card-title { font-weight: 600; font-size: 13px; }
-.pp-card-ops { display: flex; gap: 2px; }
-.mini-btn { border: 1px solid var(--kd-border); background: #fff; border-radius: 5px; cursor: pointer; padding: 2px 6px; font-size: 12px; }
-.mini-btn:hover { background: #eef0f5; }
-.mini-btn.danger:hover { background: #fdeceb; }
-/* 输入项统一为「上下结构」：上方 label、下方输入框（全原生 input，未用 naive-ui） */
+.pp-card-ops { display: flex; gap: 2px; align-items: center; }
+
+/* 输入项统一为「上下结构」：上方 label、下方 naive n-input-number */
 .pp-field { display: flex; flex-direction: column; gap: 3px; margin-bottom: 8px; }
 .pp-field label { font-size: 12px; color: #555; }
-.pp-field.half label { width: auto; }
-.pp-field input { width: 100%; border: 1px solid #cfd4dd; border-radius: 5px; padding: 4px 6px; font-size: 13px; box-sizing: border-box; }
-.pp-field input:focus { outline: 2px solid #b7cdf0; border-color: #2f6fd0; }
 .pp-bounds { display: flex; flex-wrap: wrap; gap: 0 8px; }
 .pp-bounds .pp-field.half { width: calc(50% - 4px); }
-.pp-bounds .pp-field.half input { width: 100%; }
 .pp-sub { font-size: 12px; color: #888; margin: 6px 0 4px; }
 .pp-hint2 { font-size: 11px; color: #9a9a9a; margin: 2px 0 6px; line-height: 1.4; }
 .pp-stats { font-size: 12px; color: #666; margin-top: 6px; }
-.pp-delete-all { width: 100%; border: 1px solid #e6b8b4; background: #fdf3f2; color: #c0392b; border-radius: 6px; padding: 6px; cursor: pointer; }
-.pp-delete-all:hover { background: #fdeceb; }
 .kd-mini-table { border-collapse: collapse; font-size: 13px; margin: 6px 0; }
 .kd-mini-table td { padding: 3px 12px 3px 0; }
 </style>
