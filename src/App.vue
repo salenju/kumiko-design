@@ -42,34 +42,74 @@ function isTypingTarget(e) {
 
 function onKeydown(e) {
   const mod = e.ctrlKey || e.metaKey
+  const inField = isTypingTarget(e)
+  // 空格：临时平移（任何工具下按住空格+拖拽 = 平移）
+  if (e.code === 'Space' && !inField) {
+    if (!e.repeat) {
+      e.preventDefault()
+      ui.setSpacePan(true)
+    }
+    return
+  }
   // Ctrl/⌘+S 保存到本地
-  if (mod && e.key.toLowerCase() === 's' && !isTypingTarget(e)) {
+  if (mod && e.key.toLowerCase() === 's' && !inField) {
     e.preventDefault()
     saveLocal()
     return
   }
-  if (mod && e.key.toLowerCase() === 'z' && !isTypingTarget(e)) {
+  if (mod && e.key.toLowerCase() === 'z' && !inField) {
     e.preventDefault()
     if (e.shiftKey) history.redo()
     else history.undo()
     return
   }
-  if (mod && e.key.toLowerCase() === 'y' && !isTypingTarget(e)) {
+  if (mod && e.key.toLowerCase() === 'y' && !inField) {
     e.preventDefault()
     history.redo()
     return
   }
-  if ((e.key === 'Delete' || e.key === 'Backspace') && !isTypingTarget(e)) {
+  // Ctrl/⌘+D 复制选中（行业惯例，AI/PS 同）
+  if (mod && e.key.toLowerCase() === 'd' && !inField) {
+    e.preventDefault()
+    selection.duplicateSelected()
+    return
+  }
+  // Ctrl/⌘+A 全选（行业惯例）
+  if (mod && e.key.toLowerCase() === 'a' && !inField) {
+    e.preventDefault()
+    ui.setSelectedPatterns(project.patterns.map((p) => p.id))
+    return
+  }
+  // Ctrl/⌘+0 适配视图（行业惯例）
+  if (mod && e.key === '0' && !inField) {
+    e.preventDefault()
+    onFit()
+    return
+  }
+  if ((e.key === 'Delete' || e.key === 'Backspace') && !inField) {
+    e.preventDefault()
     selection.deleteSelected()
     return
   }
-  if (e.key === 'Escape') {
+  if (e.key === 'Escape' && !inField) {
     ui.clearSelection()
     ui.setTool(ui.tool)
+    return
   }
-  // 数字键切换工具：1=选择 2=画线族 3=画单线 4=平移
-  if (!isTypingTarget(e) && !mod && ['1', '2', '3', '4'].includes(e.key)) {
-    ui.setTool(['select', 'pattern', 'line', 'pan'][Number(e.key) - 1])
+  // 工具快捷键（行业惯例：V 选择 / H 平移 / L 画线 / G 画线族；数字键 1-4 同义）
+  if (!inField && !mod) {
+    const k = e.key.toLowerCase()
+    const map = { v: 'select', h: 'pan', l: 'line', g: 'pattern', '1': 'select', '2': 'pattern', '3': 'line', '4': 'pan' }
+    if (map[k]) {
+      ui.setTool(map[k])
+    }
+  }
+}
+
+function onKeyup(e) {
+  // 松开空格结束临时平移
+  if (e.code === 'Space') {
+    ui.setSpacePan(false)
   }
 }
 
@@ -79,9 +119,11 @@ function onFit() {
 
 onMounted(() => {
   window.addEventListener('keydown', onKeydown)
+  window.addEventListener('keyup', onKeyup)
 })
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeydown)
+  window.removeEventListener('keyup', onKeyup)
 })
 </script>
 

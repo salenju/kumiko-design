@@ -34,6 +34,9 @@ const patternTool = usePatternTool()
 // 绘制类工具（画线族/画单线共用 usePatternTool 指针状态机）
 const drawModes = ['pattern', 'line']
 
+// 是否处于平移状态：平移工具 或 按住空格临时平移
+const isPanning = computed(() => ui.tool === 'pan' || ui.spacePan)
+
 // 可见世界范围（mm）
 const viewRect = computed(() => {
   const w = px.w / ui.zoom
@@ -52,6 +55,7 @@ const mode = computed(() => ui.tool)
 // —— 线段拖拽状态（select 工具） ——
 const segDrag = ref(null) // { patternId, seg, snapBefore, lastWorld }
 const dragHints = ref([]) // [{ x, y, text, kind }] 拖拽中的提示（世界坐标）
+const panSession = ref(false) // 本次拖拽是否为平移手势（含空格临时平移）
 
 const DRAG_THRESHOLD_PX = 4 // 判定为拖拽的屏幕像素阈值
 
@@ -71,7 +75,8 @@ function onPointerDown(e) {
   } catch {
     /* 兼容性忽略 */
   }
-  if (mode.value === 'pan') {
+  if (isPanning.value) {
+    panSession.value = true
     return
   }
   if (drawModes.includes(mode.value)) {
@@ -110,7 +115,7 @@ function onPointerMove(e) {
   if (dist > 1) moved.value = true
   lastPointer.value = { x: e.clientX, y: e.clientY }
 
-  if (mode.value === 'pan') {
+  if (isPanning.value || panSession.value) {
     panByPx(dx, dy)
     return
   }
@@ -248,7 +253,8 @@ function onPointerUp(e) {
   dragging.value = false
   ui.setHovered(null)
 
-  if (mode.value === 'pan') {
+  if (isPanning.value || panSession.value) {
+    panSession.value = false
     return
   }
   if (drawModes.includes(mode.value)) {
@@ -313,7 +319,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <div ref="hostEl" class="kumiko-canvas" :style="{ width: '100%', height: '100%', position: 'relative', cursor: mode === 'pan' ? 'grab' : drawModes.includes(mode) ? 'crosshair' : segDrag && segDrag.active ? 'grabbing' : 'default' }">
+  <div ref="hostEl" class="kumiko-canvas" :style="{ width: '100%', height: '100%', position: 'relative', cursor: isPanning ? 'grab' : drawModes.includes(mode) ? 'crosshair' : segDrag && segDrag.active ? 'grabbing' : 'default' }">
     <svg
       ref="svgEl"
       :viewBox="viewBox"

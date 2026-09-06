@@ -24,26 +24,42 @@ function segColor(seg) {
 }
 
 /**
- * 标注摆放：
- *  横线（水平为主）→ 显示在线上方；竖线 → 显示在线左侧；
- *  斜线 → 保持中点（不遮挡的判断见下）。
+ * 标注摆放（用户需求）：
+ *  - 横线：距【左端点】10px（屏幕）沿 x 方向，文字放线上方（不遮线）
+ *  - 竖线：距【上端点】10px（屏幕）沿 y 方向，文字放线左侧（不遮线）
+ *  - 斜线：中点略偏移
  */
 function labelPlacement(seg) {
-  const mx = (seg.x1 + seg.x2) / 2
-  const my = (seg.y1 + seg.y2) / 2
   const dx = Math.abs(seg.x2 - seg.x1)
   const dy = Math.abs(seg.y2 - seg.y1)
-  const offset = 7 / props.zoom // 屏幕恒定 ~7px 外移
-  if (dx >= dy * 4) {
-    // 水平为主 → 上方
-    return { x: mx, y: my - offset, anchor: 'middle', baseline: 'auto' }
+  const gap = 10 / props.zoom // 10px 屏幕 → mm
+  const half = labelFontMm.value * 0.55 // 半行字高（mm）
+  if (dy <= dx * 0.15) {
+    // 横线：从左端点向右 gap 处开始，y 提到线上方半个字高
+    const leftX = Math.min(seg.x1, seg.x2)
+    const lineY = (seg.y1 + seg.y2) / 2
+    return { x: leftX + gap, y: lineY - half, anchor: 'start', baseline: 'middle' }
   }
-  if (dy >= dx * 4) {
-    // 竖直为主 → 左侧
-    return { x: mx - offset, y: my, anchor: 'end', baseline: 'middle' }
+  if (dx <= dy * 0.15) {
+    // 竖线：从上端点向下 gap 处，x 移到线左侧
+    const topY = Math.min(seg.y1, seg.y2)
+    const lineX = (seg.x1 + seg.x2) / 2
+    return { x: lineX - gap, y: topY + gap, anchor: 'end', baseline: 'middle' }
   }
-  // 斜线：默认中点，稍微向法向侧挪开半行字高避免压线
-  return { x: mx, y: my - offset / 2, anchor: 'middle', baseline: 'auto' }
+  // 斜线：中点法向偏移
+  const mx = (seg.x1 + seg.x2) / 2
+  const my = (seg.y1 + seg.y2) / 2
+  return { x: mx, y: my - half, anchor: 'middle', baseline: 'middle' }
+}
+
+function placementFor(seg) {
+  const p = labelPlacement(seg)
+  return {
+    x: p.x,
+    y: p.y,
+    anchor: p.anchor,
+    baseline: p.baseline
+  }
 }
 </script>
 
@@ -73,12 +89,16 @@ function labelPlacement(seg) {
       <!-- 长度标注：悬停段总是显示；全图标注开关对所有段显示 -->
       <text
         v-if="labelsEnabled || seg.id === hoveredSegmentId"
-        :x="labelPlacement(seg).x"
-        :y="labelPlacement(seg).y"
+        :x="placementFor(seg).x"
+        :y="placementFor(seg).y"
         :font-size="labelFontMm"
-        fill="#8a5a00"
-        :text-anchor="labelPlacement(seg).anchor"
-        :dominant-baseline="labelPlacement(seg).baseline"
+        fill="#7a4d00"
+        :text-anchor="placementFor(seg).anchor"
+        :dominant-baseline="placementFor(seg).baseline"
+        stroke="#fff"
+        :stroke-width="Math.max(0.8, 3 / zoom)"
+        paint-order="stroke"
+        stroke-linejoin="round"
         style="pointer-events: none"
       >
         {{ seg.length.toFixed(1) }}

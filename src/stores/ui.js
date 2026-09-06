@@ -20,7 +20,8 @@ export const useUiStore = defineStore('ui', {
     selectedPatternIds: [], // 当前选中线族
     hoveredSegmentId: null,
     // 交互草稿
-    draft: null // { x, y, angle, spacing, count, width, size } 画线族预览
+    draft: null, // { x, y, angle, spacing, count, width, size } 画线族预览
+    spacePan: false // 空格临时平移中（配合鼠标拖动）
   }),
 
   getters: {
@@ -36,6 +37,9 @@ export const useUiStore = defineStore('ui', {
     setTool(tool) {
       this.tool = tool
       this.draft = null
+    },
+    setSpacePan(v) {
+      this.spacePan = v
     },
     setCenter(x, y) {
       this.center = { x, y }
