@@ -7,24 +7,20 @@ import { NModal, NCard, NInput, useMessage } from 'naive-ui'
 import { useUiStore } from '../../stores/ui.js'
 import { useHistoryStore } from '../../stores/history.js'
 import { useProjectStore } from '../../stores/project.js'
+import { useWorkspaceStore } from '../../stores/workspace.js'
 import { useSelection } from '../../composables/useSelection.js'
 import { buildSvgString, downloadSvg } from '../../utils/exportSvg.js'
-import {
-  downloadProjectFile,
-  parseProjectJson,
-  pickAndReadJsonFile,
-  sanitizeFileBase
-} from '../../utils/projectFile.js'
+import { downloadProjectFile, sanitizeFileBase } from '../../utils/projectFile.js'
 import { buildConstructionEntries } from '../../utils/constructionDoc.js'
 import { downloadZip } from '../../utils/zip.js'
 import { colorForSeg } from '../../core/colors.js'
-import { saveProjectNow, clearPersistedProject } from '../../utils/persist.js'
 import { formatShortcut } from '../../utils/platform.js'
 
-const emit = defineEmits(['open-presets', 'open-ai', 'open-cutlist', 'open-parts', 'open-settings', 'fit'])
+const emit = defineEmits(['open-presets', 'open-ai', 'open-cutlist', 'open-parts', 'open-settings', 'open-workspace', 'fit'])
 const ui = useUiStore()
 const history = useHistoryStore()
 const project = useProjectStore()
+const workspace = useWorkspaceStore()
 const message = useMessage()
 
 const selection = useSelection()
@@ -49,26 +45,30 @@ function redo() {
   history.redo()
 }
 
-/** 立即保存到浏览器本地（重新打开自动恢复） */
-function saveLocal() {
-  saveProjectNow(project)
-  message.success('已保存到浏览器本地（重新打开页面自动恢复）')
+/** 立即暂存到当前作品（重新打开自动恢复） */
+async function saveLocal() {
+  try {
+    await workspace.saveCurrentNow()
+    message.success(`已暂存「${workspace.currentWork?.name || '当前作品'}」`)
+  } catch (e) {
+    message.error(`暂存失败：${e?.message || e}`)
+  }
 }
 
 /**
- * 新建空白项目：清空图案、选择、撤销历史与本地存档。
- * 若当前画布非空先弹确认，避免误清空。材料参数（条长/kerf）保留。
+ * 新建空白作品并切换编辑。
+ * 材料参数（条长/kerf）、间距单位、线条配色保留；图案与撤销历史清空。
  */
-function newProject() {
-  if (project.patterns.length && !window.confirm('新建将清空当前画布（撤销历史也会清除），确定继续吗？')) {
+async function newProject() {
+  if (
+    project.patterns.length &&
+    !window.confirm('新建将切换到一份空白作品（当前作品仍保留在工作区，撤销历史会清除），确定继续吗？')
+  ) {
     return
   }
-  project.replaceAll({ patterns: [], material: project.material })
-  history.clear()
-  ui.clearSelection()
   ui.setTool('select')
-  clearPersistedProject()
-  message.success('已新建空白项目')
+  const rec = await workspace.createWork()
+  message.success(`已新建「${rec.name}」`)
   emit('fit')
 }
 
@@ -131,20 +131,25 @@ function exportFile() {
   message.success(`已导出项目文件：${base}.kumiko.json`)
 }
 
-/** 导入项目文件（替换当前项目，可撤销） */
+/**
+ * 导入项目文件：作为「新作品」加入工作区并打开（不覆盖当前作品）。
+ * 支持多选，逐个导入，文件名作为作品名。
+ */
 async function importFile() {
   try {
-    const text = await pickAndReadJsonFile()
-    if (!text) return
-    const data = parseProjectJson(text)
-    history.beginEdit(() => {
-      project.replaceAll(data)
-      ui.clearSelection()
-    })
-    message.success(`已导入项目：${data.patterns.length} 图案`)
-    emit('fit')
+    const r = await workspace.importFromPicker()
+    if (!r.created.length && !r.failed.length) return
+    if (r.created.length) {
+      const last = r.created[r.created.length - 1]
+      await workspace.openWork(last.id)
+      message.success(`已导入 ${r.created.length} 个作品，并打开「${last.name}」`)
+      emit('fit')
+    }
+    if (r.failed.length) {
+      message.error(`${r.failed.length} 个文件导入失败：${r.failed[0].message}`)
+    }
   } catch (e) {
-    message.error(`导入失败：${e.message}`)
+    message.error(`导入失败：${e?.message || e}`)
   }
 }
 
@@ -211,12 +216,13 @@ function toggleLabels() {
 
     <div class="tb-sep"></div>
 
-    <!-- 文件：项目存取 -->
-    <div class="tb-group" title="文件">
-      <button class="tb-btn" title="新建空白项目（清空当前画布）" @click="newProject">＋ 新建</button>
-      <button class="tb-btn" :title="`立即保存到浏览器本地（${formatShortcut(['mod', 's'])}）`" @click="saveLocal">💾 保存</button>
-      <button class="tb-btn" title="导出项目文件 .kumiko.json（先输入导出文件名）" @click="openExportDialog">⇩ 导出文件</button>
-      <button class="tb-btn" title="导入 .kumiko.json 项目文件（替换当前项目，可撤销）" @click="importFile">⇧ 导入文件</button>
+    <!-- 文件：工作区与项目存取 -->
+    <div class="tb-group" title="文件与工作区">
+      <button class="tb-btn ws" title="工作区：多作品暂存/恢复/管理、备份全部" @click="emit('open-workspace')">🗂 工作区</button>
+      <button class="tb-btn" title="新建空白作品（当前作品保留在工作区）" @click="newProject">＋ 新建</button>
+      <button class="tb-btn" :title="`立即暂存当前作品（${formatShortcut(['mod', 's'])}）`" @click="saveLocal">💾 保存</button>
+      <button class="tb-btn" title="导出当前作品为 .kumiko.json（先输入导出文件名）" @click="openExportDialog">⇩ 导出文件</button>
+      <button class="tb-btn" title="导入 .kumiko.json（可多选）为新作品并打开" @click="importFile">⇧ 导入文件</button>
       <button class="tb-btn" title="设置：全局间距单位、线条按角度颜色（随项目保存）" @click="emit('open-settings')">⚙ 设置</button>
     </div>
 
@@ -231,7 +237,11 @@ function toggleLabels() {
     </div>
 
     <div class="tb-status">
-      {{ project.patterns.length }} 图案 · {{ project.segments.length }} 段
+      <button class="tb-work" title="打开工作区" @click="emit('open-workspace')">
+        {{ workspace.currentWork?.name || '未命名作品' }}
+      </button>
+      · {{ project.patterns.length }} 图案 · {{ project.segments.length }} 段
+      <span v-if="workspace.saving" class="tb-saving">保存中…</span>
       <span v-if="ui.tool === 'select'">· V 选择 | 空格=临时平移</span>
       <span v-else-if="ui.tool === 'pattern'">· G 画线族 | 空格=临时平移</span>
       <span v-else-if="ui.tool === 'line'">· L 画单线（Esc 取消）| 空格=临时平移</span>
@@ -316,7 +326,25 @@ function toggleLabels() {
 }
 .tb-btn.active .tb-key { border-color: #b7cdf0; color: #2a5fb8; }
 .tb-spacer { flex: 1; }
-.tb-status { font-size: 12px; color: #777; margin-left: 8px; white-space: nowrap; }
+.tb-status { font-size: 12px; color: #777; margin-left: 8px; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; }
+.tb-work {
+  border: 1px solid var(--kd-border);
+  background: #fff;
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-size: 12px;
+  color: #1f4e9c;
+  cursor: pointer;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tb-work:hover { background: #eef2fa; }
+.tb-saving { color: #18a058; }
+/* 「工作区」按钮：与普通按钮区分（浅蓝底） */
+.tb-btn.ws { background: #eef2fa; border-color: #d3e0f5; color: #1f4e9c; }
+.tb-btn.ws:hover { background: #e2eaf8; }
 .tb-export { display: flex; flex-direction: column; gap: 8px; }
 .tb-export label { font-size: 13px; color: #333; }
 .tb-export-note { font-size: 12px; color: #888; line-height: 1.5; }

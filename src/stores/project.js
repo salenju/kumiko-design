@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { deriveSegments, segmentsBounds, translatePattern } from '../core/index.js'
+import { segmentsFromPatterns, segmentsBounds, translatePattern } from '../core/index.js'
 import { defaultColorScheme, normalizeScheme, angleKey } from '../core/index.js'
 
 /**
@@ -28,27 +28,12 @@ export const useProjectStore = defineStore('project', {
   }),
 
   getters: {
-    /** 单线图案直接作为一段（不参与求交） */
-    lineSegments(state) {
-      return state.patterns
-        .filter((p) => p && p.kind === 'line')
-        .map((p) => ({
-          id: p.id,
-          x1: p.x1,
-          y1: p.y1,
-          x2: p.x2,
-          y2: p.y2,
-          length: Math.hypot(p.x2 - p.x1, p.y2 - p.y1),
-          width: p.width,
-          patternId: p.id,
-          lineIndex: 0
-        }))
-    },
-
-    /** 全部派生段 = 线族求交派生段 + 单线（依赖 patterns 引用，仅在数据变化时重算） */
+    /**
+     * 全部派生段 = 线族求交派生段 + 单线。
+     * 依赖 patterns 引用，仅在数据变化时重算；派生逻辑集中在 core（segmentsFromPatterns）。
+     */
     segments(state) {
-      const families = state.patterns.filter((p) => p && p.kind === 'family')
-      return [...this.lineSegments, ...deriveSegments(families)]
+      return segmentsFromPatterns(state.patterns)
     },
 
     /** 整体图案 bounds（mm）；无图案时给一个默认画布区域（工作台范围） */

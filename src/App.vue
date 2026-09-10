@@ -12,13 +12,15 @@ import {
 import { useUiStore } from './stores/ui.js'
 import { useProjectStore } from './stores/project.js'
 import { useHistoryStore } from './stores/history.js'
-import { saveProjectNow } from './utils/persist.js'
+import { useWorkspaceStore } from './stores/workspace.js'
 import KumikoCanvas from './components/canvas/KumikoCanvas.vue'
 import Toolbar from './components/panels/Toolbar.vue'
 import PatternPropertyPanel from './components/panels/PatternPropertyPanel.vue'
 import CutListPanel from './components/panels/CutListPanel.vue'
 import PartsPanel from './components/panels/PartsPanel.vue'
 import SettingsPanel from './components/panels/SettingsPanel.vue'
+import WorkspaceModal from './components/dialogs/WorkspaceModal.vue'
+import PwaPrompts from './components/dialogs/PwaPrompts.vue'
 import PresetsModal from './components/dialogs/PresetsModal.vue'
 import AiModal from './components/dialogs/AiModal.vue'
 import { useSelection } from './composables/useSelection.js'
@@ -26,6 +28,7 @@ import { useSelection } from './composables/useSelection.js'
 const ui = useUiStore()
 const project = useProjectStore()
 const history = useHistoryStore()
+const workspace = useWorkspaceStore()
 const selection = useSelection()
 
 const canvasRef = ref(null)
@@ -34,6 +37,7 @@ const showAi = ref(false)
 const showCutlist = ref(false)
 const showParts = ref(false)
 const showSettings = ref(false)
+const showWorkspace = ref(false)
 
 /** 算料 / 图案部件 两个抽屉互斥打开 */
 function openCutlist() {
@@ -45,8 +49,15 @@ function openParts() {
   showCutlist.value = false
 }
 
-function saveLocal() {
-  saveProjectNow(project)
+/** 立即写回当前作品（⌘S） */
+async function saveLocal() {
+  await workspace.saveCurrentNow()
+}
+
+/** 打开工作区面板（顺手刷新当前作品缩略图） */
+function openWorkspace() {
+  showWorkspace.value = true
+  workspace.refreshCurrentThumbnail().catch(() => {})
 }
 
 function isTypingTarget(e) {
@@ -151,8 +162,10 @@ onBeforeUnmount(() => {
           @open-cutlist="openCutlist"
           @open-parts="openParts"
           @open-settings="showSettings = true"
+          @open-workspace="openWorkspace"
           @fit="onFit"
         />
+        <PwaPrompts />
         <div class="kd-main">
           <div class="kd-canvas-host">
             <KumikoCanvas ref="canvasRef" />
@@ -167,6 +180,7 @@ onBeforeUnmount(() => {
         <CutListPanel v-model:show="showCutlist" />
         <PartsPanel v-model:show="showParts" />
         <SettingsPanel v-model:show="showSettings" />
+        <WorkspaceModal v-model:show="showWorkspace" @fit="onFit" />
       </div>
     </n-message-provider>
   </n-config-provider>

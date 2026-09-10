@@ -60,3 +60,31 @@ body {
 .n-input-number {
   width: 100%;
 }
+
+/* ---------------- Pad / 触屏适配 ---------------- */
+
+/* 触屏设备：工具按钮触控目标放大到 ≥ 44px（WCAG 推荐） */
+@media (pointer: coarse) {
+  .kd-toolbar .tb-btn {
+    min-height: 44px;
+    padding: 8px 12px;
+  }
+  .kd-toolbar {
+    padding: 6px 10px;
+    gap: 4px;
+  }
+}
+
+/* 窄屏（pad 竖屏 / 小窗）：优先保证画布宽度，属性面板收窄 */
+@media (max-width: 1024px) {
+  .kd-panel {
+    width: 280px;
+  }
+}
+
+@media (max-width: 760px) {
+  .kd-panel {
+    width: 236px;
+    padding: 8px;
+  }
+}

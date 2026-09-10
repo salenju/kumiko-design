@@ -7,22 +7,27 @@ import { uid } from './id.js'
 
 const APP_NAME = 'kumiko-design'
 
-/** 由 project store 构建可下载的项目 JSON 字符串 */
-export function buildProjectJson(projectStore) {
-  return JSON.stringify(
-    {
-      app: APP_NAME,
-      file: uid('proj').slice(0, 14),
-      version: projectStore.version,
-      exportedAt: new Date().toISOString(),
-      patterns: projectStore.patterns,
-      material: projectStore.material,
-      spacingUnit: projectStore.spacingUnit,
-      lineColors: projectStore.lineColors
-    },
-    null,
-    2
-  )
+/**
+ * 由 project store（或等价的纯数据对象）构建可下载的项目 JSON 字符串。
+ * @param {object} source 含 version/patterns/material/spacingUnit/lineColors
+ * @param {object} [opts]
+ *   - name?: string 作品名（写入文件，供导入时还原名称）
+ *   - file?: string 文件标识（缺省自动生成）
+ */
+export function buildProjectJson(source, opts = {}) {
+  const name = sanitizeFileBase(opts.name)
+  const payload = {
+    app: APP_NAME,
+    file: sanitizeFileBase(opts.file) || uid('proj').slice(0, 14),
+    version: source.version,
+    exportedAt: new Date().toISOString(),
+    patterns: source.patterns,
+    material: source.material,
+    spacingUnit: source.spacingUnit,
+    lineColors: source.lineColors
+  }
+  if (name) payload.name = name
+  return JSON.stringify(payload, null, 2)
 }
 
 /** 非法文件名字符 → 下划线（跨平台安全），并裁首尾空白/点号 */
@@ -70,17 +75,28 @@ export function parseProjectJson(text) {
     throw new Error('缺少 patterns 数据，不是 kumiko-design 项目文件')
   }
   const spacingUnit = Number(data.spacingUnit)
+  const name = typeof data.name === 'string' && data.name.trim() ? data.name.trim() : undefined
   return {
     patterns: data.patterns,
     material: data.material || {},
     // 旧版本文件缺 spacingUnit/lineColors → undefined，replaceAll 时回退默认
     spacingUnit: Number.isFinite(spacingUnit) && spacingUnit > 0 ? spacingUnit : undefined,
     lineColors:
-      data.lineColors && typeof data.lineColors === 'object' ? data.lineColors : undefined
+      data.lineColors && typeof data.lineColors === 'object' ? data.lineColors : undefined,
+    name
   }
 }
 
-/** 浏览器打开文件选择器并读取文本 */
+function readFileAsText(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result))
+    reader.onerror = () => reject(new Error('读取文件失败'))
+    reader.readAsText(file)
+  })
+}
+
+/** 浏览器打开文件选择器并读取单个文件文本 */
 export function pickAndReadJsonFile() {
   return new Promise((resolve, reject) => {
     const input = document.createElement('input')
@@ -89,12 +105,35 @@ export function pickAndReadJsonFile() {
     input.onchange = () => {
       const file = input.files && input.files[0]
       if (!file) return resolve(null)
-      const reader = new FileReader()
-      reader.onload = () => resolve(String(reader.result))
-      reader.onerror = () => reject(new Error('读取文件失败'))
-      reader.readAsText(file)
+      readFileAsText(file).then(resolve, reject)
     }
     input.oncancel = () => resolve(null)
+    input.click()
+  })
+}
+
+/**
+ * 多选读取项目文件（工作区批量导入）。
+ * @returns {Promise<Array<{name:string, text:string}>>} 用户取消返回 []
+ */
+export function pickAndReadJsonFiles() {
+  return new Promise((resolve, reject) => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.multiple = true
+    input.accept = '.json,application/json'
+    input.onchange = async () => {
+      const files = Array.from(input.files || [])
+      if (!files.length) return resolve([])
+      try {
+        const out = []
+        for (const f of files) out.push({ name: f.name, text: await readFileAsText(f) })
+        resolve(out)
+      } catch (e) {
+        reject(e)
+      }
+    }
+    input.oncancel = () => resolve([])
     input.click()
   })
 }

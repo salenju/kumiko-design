@@ -107,6 +107,31 @@ export function deriveSegments(patterns) {
   return segments
 }
 
+/**
+ * 由 patterns 派生全部线段 = 线族求交段 + 单线（与 project store.segments 语义一致）。
+ * 供不依赖 store 的场景复用（如工作区缩略图、批量导出）。
+ * @param {Array} patterns
+ * @returns {Array<{id,x1,y1,x2,y2,length,width,patternId,lineIndex}>}
+ */
+export function segmentsFromPatterns(patterns) {
+  const list = Array.isArray(patterns) ? patterns : []
+  const lines = list
+    .filter((p) => p && p.kind === 'line')
+    .map((p) => ({
+      id: p.id,
+      x1: p.x1,
+      y1: p.y1,
+      x2: p.x2,
+      y2: p.y2,
+      length: Math.hypot(p.x2 - p.x1, p.y2 - p.y1),
+      width: p.width,
+      patternId: p.id,
+      lineIndex: 0
+    }))
+  const families = list.filter((p) => p && p.kind === 'family')
+  return [...lines, ...deriveSegments(families)]
+}
+
 /** 全体线段最小包围盒（用于导出/适配视图）；空数组返回 null */
 export function segmentsBounds(segments) {
   if (!segments.length) return null

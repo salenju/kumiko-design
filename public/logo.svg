@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- 组子细工绘图助手 品牌图标：藏青底 + 三角形组子格纹 -->
+  <rect width="512" height="512" rx="104" fill="#1f4e9c" />
+  <g
+    fill="none"
+    stroke="#ffffff"
+    stroke-width="20"
+    stroke-linejoin="round"
+    stroke-linecap="round"
+  >
+    <!-- 外三角 -->
+    <path d="M256 120 L392 356 L120 356 Z" />
+    <!-- 内三角 -->
+    <path d="M256 196 L344 320 L168 320 Z" />
+    <!-- 中央竖线 -->
+    <path d="M256 120 L256 356" />
+    <!-- 横向格条 -->
+    <path d="M188 256 L324 256" />
+  </g>
+</svg>
