@@ -2,19 +2,22 @@
  * 图案部件统计（core/parts/parts.js）
  *
  * 面向组子正式施工前的「同型部件计数与标注」：
- *  - 部件 = 一整根木条：线族中每一根直线（在自身 bounds 内的整根），
- *          以及画出的每一根「单线」（kind:'line'）—— 都按整根参与统计；
- *  - 插口 = 该木条与其它【非平行】木条（不区分线族/单线，任意角度）相交，
+ *  - 部件 = 一整根木条：线族中每一根直线（在自身 bounds 内的整根）、
+ *          画出的每一根「单线」（kind:'line'）、
+ *          段集中的每一段（kind:'segs'）—— 都按整根参与统计；
+ *  - 插口 = 该木条与其它【非平行】木条（不区分线族/单线/段集，任意角度）相交，
  *           且交点落在双方木条实体内部（排除正好戳在端头的退化交点）；
  *  - 相同部件：尺寸（长度/宽度，0.1mm 精度归并）
  *            + 插口间距序列（相邻插口中心距 ÷ 全局单位，四舍五入取整 x）
- *            + 插口数量相同；
+ *            + 插口数量相同
+ *            + 归属同一【图案分类 + 图案模块】（见 options.meta，实现「按图案库分类罗列」）；
  *  - 间距缩写 = 相邻插口间距的整数 x 序列，用 '-' 连接（如 1-2-1），
  *    一根木条翻转后应视为同型 → 分组时取「原序/倒序」中字典序小者。
  */
 
 import { familyLines } from '../patterns/family.js'
 import { lineLineIntersect, lineRectIntersect } from '../geometry/index.js'
+import { MANUAL_CATEGORY_KEY, categoryName } from '../library/catalog.js'
 
 const EPS = 1e-6 // 端点/重合容差（mm）
 
@@ -61,7 +64,31 @@ function barFromFamilyLine(line, p) {
   }
 }
 
-/** 展开全部部件（family 每根直线 + 每条单线） */
+/** 段集（kind:'segs'）中的一段 → 一根部件 */
+function barsFromSegsPattern(p) {
+  const out = []
+  ;(p.segments || []).forEach((s, k) => {
+    const dx = s.x2 - s.x1
+    const dy = s.y2 - s.y1
+    const len = Math.hypot(dx, dy)
+    if (len <= EPS) return
+    out.push({
+      patternId: p.id,
+      lineIndex: k,
+      x: s.x1,
+      y: s.y1,
+      dx: dx / len,
+      dy: dy / len,
+      spanLo: 0,
+      spanHi: len,
+      length: len,
+      width: p.width
+    })
+  })
+  return out
+}
+
+/** 展开全部部件（family 每根直线 + 每条单线 + 段集每段） */
 export function expandBars(patterns) {
   const bars = []
   if (!Array.isArray(patterns)) return bars
@@ -70,6 +97,8 @@ export function expandBars(patterns) {
     if (p.kind === 'line') {
       const b = barFromSingleLine(p)
       if (b) bars.push(b)
+    } else if (p.kind === 'segs') {
+      bars.push(...barsFromSegsPattern(p))
     } else if (p.kind === 'family') {
       for (const line of familyLines(p)) {
         const b = barFromFamilyLine(line, p)
@@ -107,13 +136,16 @@ export function canonicalCode(digits) {
 }
 
 /**
- * 统计整根部件并按「相同部件」分组。
- * @param {Array} patterns 图案纯数据（family + line）
+ * 统计整根部件并按「相同部件」分组，同时带上图案库分类维度。
+ *
+ * @param {Array} patterns 图案纯数据（family + line + segs）
  * @param {number} unit 全局间距单位 mm（默认 10）
- * @returns {Array<{length:number,width:number,digits:number[],code:string,notchCount:number,pieces:number}>}
- *   长度/宽度保留 0.1mm 归并；按 长度→宽度→插口数→code 升序。
+ * @param {{meta?:Object}} [options] meta: patternId → { groupId, moduleId, moduleName, category }
+ * @returns {Array<{length,width,digits,code,notchCount,pieces,category,categoryName,moduleId,moduleName,groupId}>}
+ *   长度/宽度保留 0.1mm 归并；按 分类→模块→长度→宽度→插口数→code 升序。
  */
-export function analyzeParts(patterns, unit = 10) {
+export function analyzeParts(patterns, unit = 10, options = {}) {
+  const meta = options.meta || {}
   const bars = expandBars(patterns)
   // 1) 每根部件求内部插口位置（沿自身方向参数 t，mm）
   const notches = bars.map(() => [])
@@ -132,10 +164,13 @@ export function analyzeParts(patterns, unit = 10) {
     }
   }
 
-  // 2) 每根部件 → 归一化特征
+  // 2) 每根部件 → 归一化特征（含分类维度）
   const groups = new Map()
   for (let i = 0; i < bars.length; i++) {
     const b = bars[i]
+    const m = meta[b.patternId] || {}
+    const category = m.category || MANUAL_CATEGORY_KEY
+    const moduleId = m.moduleId || ''
     const sorted = notches[i].sort((a, c) => a - c)
     const uniq = []
     for (const t of sorted) {
@@ -145,18 +180,79 @@ export function analyzeParts(patterns, unit = 10) {
     const code = canonicalCode(digits)
     const lengthR = Math.round(b.length * 10) / 10 // 0.1mm 归并
     const widthR = Math.round((b.width ?? 0) * 10) / 10
-    const key = `${lengthR}|${widthR}|${code}|${uniq.length}`
+    const key = `${category}|${moduleId}|${lengthR}|${widthR}|${code}|${uniq.length}`
     const cur = groups.get(key)
-    if (cur) cur.pieces += 1
-    else groups.set(key, { length: lengthR, width: widthR, digits, code, notchCount: uniq.length, pieces: 1 })
+    if (cur) {
+      cur.pieces += 1
+    } else {
+      groups.set(key, {
+        length: lengthR,
+        width: widthR,
+        digits,
+        code,
+        notchCount: uniq.length,
+        pieces: 1,
+        category,
+        categoryName: m.categoryName || categoryName(category),
+        moduleId: moduleId || null,
+        moduleName: m.moduleName || '',
+        groupId: m.groupId || null
+      })
+    }
   }
   const list = [...groups.values()]
   list.sort(
     (a, b) =>
+      (a.category < b.category ? -1 : a.category > b.category ? 1 : 0) ||
+      (a.moduleName < b.moduleName ? -1 : a.moduleName > b.moduleName ? 1 : 0) ||
       a.length - b.length ||
       a.width - b.width ||
       a.notchCount - b.notchCount ||
       (a.code < b.code ? -1 : a.code > b.code ? 1 : 0)
   )
   return list
+}
+
+/**
+ * 按「图案分类 → 图案模块」把部件分组（供图案部件面板的分类视图使用）。
+ * @returns {Array<{category,categoryName,moduleId,moduleName,items,pieceCount,notchCount}>}
+ */
+export function groupPartsByCategory(groups) {
+  const byCat = new Map()
+  for (const g of groups || []) {
+    if (!byCat.has(g.category)) {
+      byCat.set(g.category, {
+        category: g.category,
+        categoryName: g.categoryName,
+        modules: new Map()
+      })
+    }
+    const cat = byCat.get(g.category)
+    const mid = g.moduleId || ''
+    if (!cat.modules.has(mid)) {
+      cat.modules.set(mid, {
+        moduleId: g.moduleId,
+        moduleName: g.moduleName || '手工 / 未归属',
+        items: []
+      })
+    }
+    cat.modules.get(mid).items.push(g)
+  }
+  const out = []
+  for (const cat of byCat.values()) {
+    const modules = [...cat.modules.values()]
+    for (const m of modules) {
+      m.pieceCount = m.items.reduce((s, x) => s + x.pieces, 0)
+      m.notchCount = m.items.reduce((s, x) => s + x.pieces * x.notchCount, 0)
+    }
+    out.push({
+      category: cat.category,
+      categoryName: cat.categoryName,
+      modules,
+      pieceCount: modules.reduce((s, m) => s + m.pieceCount, 0),
+      notchCount: modules.reduce((s, m) => s + m.notchCount, 0),
+      groupCount: modules.reduce((s, m) => s + m.items.length, 0)
+    })
+  }
+  return out
 }

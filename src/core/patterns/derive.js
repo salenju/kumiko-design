@@ -108,8 +108,13 @@ export function deriveSegments(patterns) {
 }
 
 /**
- * 由 patterns 派生全部线段 = 线族求交段 + 单线（与 project store.segments 语义一致）。
+ * 由 patterns 派生全部线段 = 线族求交段 + 单线 + 段集（与 project store.segments 语义一致）。
  * 供不依赖 store 的场景复用（如工作区缩略图、批量导出）。
+ *
+ * kind 语义：
+ *   'family' 平行线族 → 与其它非平行线族求交切分（deriveSegments）
+ *   'line'   单根独立线段 → 原样输出
+ *   'segs'   段集（如龟甲正六边形网格）→ 原样输出，不参与跨图案求交
  * @param {Array} patterns
  * @returns {Array<{id,x1,y1,x2,y2,length,width,patternId,lineIndex}>}
  */
@@ -128,8 +133,27 @@ export function segmentsFromPatterns(patterns) {
       patternId: p.id,
       lineIndex: 0
     }))
+  const segGroups = []
+  for (const p of list) {
+    if (!p || p.kind !== 'segs' || !Array.isArray(p.segments)) continue
+    p.segments.forEach((s, k) => {
+      const len = Math.hypot(s.x2 - s.x1, s.y2 - s.y1)
+      if (len < T_EPS) return
+      segGroups.push({
+        id: `${p.id}:${k}`,
+        x1: s.x1,
+        y1: s.y1,
+        x2: s.x2,
+        y2: s.y2,
+        length: len,
+        width: p.width,
+        patternId: p.id,
+        lineIndex: k
+      })
+    })
+  }
   const families = list.filter((p) => p && p.kind === 'family')
-  return [...lines, ...deriveSegments(families)]
+  return [...lines, ...segGroups, ...deriveSegments(families)]
 }
 
 /** 全体线段最小包围盒（用于导出/适配视图）；空数组返回 null */

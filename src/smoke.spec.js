@@ -5,7 +5,7 @@ import { useProjectStore } from './stores/project.js'
 import { useUiStore } from './stores/ui.js'
 import { useHistoryStore } from './stores/history.js'
 import { useSelection } from './composables/useSelection.js'
-import { generatePatterns } from './core/presets/index.js'
+import { generateModulePatterns } from './core/library/index.js'
 import { aggregateCutItems, planStock } from './core/cutlist/index.js'
 import { buildSvgString } from './utils/exportSvg.js'
 
@@ -21,7 +21,7 @@ describe('状态集成冒烟：store + composable + core 数据流', () => {
     const selection = useSelection()
 
     // 1. 通过撤销包装添加麻叶纹
-    const patterns = generatePatterns('asanoha', { size: 100, spacing: 20, width: 3 })
+    const patterns = generateModulePatterns('asanoha', { size: 100, spacing: 20, width: 3 })
     history.beginEdit(() => project.addPatterns(patterns))
     expect(project.patterns.length).toBe(3)
     expect(project.segments.length).toBeGreaterThan(10)
@@ -58,7 +58,7 @@ describe('状态集成冒烟：store + composable + core 数据流', () => {
     const ui = useUiStore()
     const project = useProjectStore()
     const selection = useSelection()
-    const patterns = generatePatterns('koushi', { size: 60, spacing: 20, width: 2 })
+    const patterns = generateModulePatterns('koushi', { size: 60, spacing: 20, width: 2 })
     project.addPatterns(patterns)
     ui.setSelectedPatterns(patterns.map((p) => p.id))
     expect(ui.selectedPatternIds.length).toBe(2)
@@ -70,7 +70,7 @@ describe('状态集成冒烟：store + composable + core 数据流', () => {
     const ui = useUiStore()
     const project = useProjectStore()
     const selection = useSelection()
-    project.addPatterns(generatePatterns('koushi', { size: 100, spacing: 20, width: 2 }))
+    project.addPatterns(generateModulePatterns('koushi', { size: 100, spacing: 20, width: 2 }))
     // 框选包含整个图案
     selection.boxSelect({ x1: -200, y1: -200, x2: 200, y2: 200 })
     expect(ui.selectedPatternIds.length).toBe(2)
@@ -81,7 +81,7 @@ describe('状态集成冒烟：store + composable + core 数据流', () => {
     const project = useProjectStore()
     const history = useHistoryStore()
     const selection = useSelection()
-    const patterns = generatePatterns('diagonal', { size: 80, spacing: 20, width: 2 })
+    const patterns = generateModulePatterns('diagonal', { size: 80, spacing: 20, width: 2 })
     project.addPatterns(patterns)
     ui.setSelectedPatterns([patterns[0].id])
     selection.deleteSelected()
@@ -92,7 +92,7 @@ describe('状态集成冒烟：store + composable + core 数据流', () => {
 
   it('算料与导出链：segments → cut list → SVG 字符串', () => {
     const project = useProjectStore()
-    project.addPatterns(generatePatterns('koushi', { size: 120, spacing: 30, width: 3 }))
+    project.addPatterns(generateModulePatterns('koushi', { size: 120, spacing: 30, width: 3 }))
     const items = aggregateCutItems(project.segments)
     expect(items.length).toBeGreaterThan(0)
     const plan = planStock(items, { stockLength: 1200, kerf: 1.5 })
@@ -105,7 +105,7 @@ describe('状态集成冒烟：store + composable + core 数据流', () => {
   it('持久化快照往返（纯数据序列化不破坏派生）', () => {
     const project = useProjectStore()
     const history = useHistoryStore()
-    const patterns = generatePatterns('asanoha', { size: 60, spacing: 15, width: 2 })
+    const patterns = generateModulePatterns('asanoha', { size: 60, spacing: 15, width: 2 })
     history.beginEdit(() => project.addPatterns(patterns))
     const snap = project.snapshot()
     const segCountBefore = project.segments.length
@@ -172,7 +172,7 @@ describe('状态集成冒烟：store + composable + core 数据流', () => {
     const project = useProjectStore()
     const history = useHistoryStore()
     history.beginEdit(() => {
-      project.addPatterns(generatePatterns('koushi', { size: 60, spacing: 20, width: 2 }))
+      project.addPatterns(generateModulePatterns('koushi', { size: 60, spacing: 20, width: 2 }))
       project.addPattern({ id: 'lnX', kind: 'line', x1: -5, y1: 0, x2: 65, y2: 0, width: 2 })
     })
     // 方格两族各自派生段 + 单线 1 段

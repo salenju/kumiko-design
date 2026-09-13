@@ -89,8 +89,18 @@ export function translatePattern(pattern, dx, dy) {
     out.y2 = pattern.y2 + dy
     return out
   }
-  // family：整体移动（ref 与 bounds 同步平移）
-  out.ref = { x: pattern.ref.x + dx, y: pattern.ref.y + dy }
+  // segs（段集）：逐段平移
+  if (pattern.kind === 'segs') {
+    out.segments = (pattern.segments || []).map((s) => ({
+      x1: s.x1 + dx,
+      y1: s.y1 + dy,
+      x2: s.x2 + dx,
+      y2: s.y2 + dy
+    }))
+  } else {
+    // family：整体移动（ref 同步平移）
+    out.ref = { x: pattern.ref.x + dx, y: pattern.ref.y + dy }
+  }
   if (pattern.bounds) {
     out.bounds = {
       x: pattern.bounds.x + dx,

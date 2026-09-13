@@ -2,7 +2,6 @@ import { useProjectStore } from '../stores/project.js'
 import { useUiStore } from '../stores/ui.js'
 import { useHistoryStore } from '../stores/history.js'
 import { distPointSegment, segmentRectOverlap } from '../core/geometry/index.js'
-import { uid } from '../utils/id.js'
 
 /**
  * 选择与命中（V2 §5.2）
@@ -38,22 +37,28 @@ export function useSelection() {
     return best
   }
 
-  /** 点选：命中则选所属线族；未命中则清空 */
+  /** 应用选择：自动扩展到「图案库实例」的全部成员 */
+  function applySelection(ids, additive) {
+    const expanded = project.expandSelection(ids)
+    if (additive) {
+      ui.setSelectedPatterns([...new Set([...ui.selectedPatternIds, ...expanded])])
+    } else {
+      ui.setSelectedPatterns(expanded)
+    }
+  }
+
+  /** 点选：命中则选所属图案（含其所属实例）；未命中则清空 */
   function clickAt(wx, wy, additive = false) {
     const seg = pickSegment(wx, wy)
     if (!seg) {
       ui.clearSelection()
       return null
     }
-    if (additive) {
-      ui.toggleSelectPattern(seg.patternId)
-    } else {
-      ui.setSelectedPatterns([seg.patternId])
-    }
+    applySelection([seg.patternId], additive)
     return seg
   }
 
-  /** 框选：世界坐标矩形内与任一 segment 相交的线族 */
+  /** 框选：世界坐标矩形内与任一 segment 相交的图案（含实例展开） */
   function boxSelect(rect) {
     const ids = new Set()
     const norm = {
@@ -68,43 +73,24 @@ export function useSelection() {
         ids.add(seg.patternId)
       }
     }
-    ui.setSelectedPatterns([...ids])
+    applySelection([...ids], false)
   }
 
-  /** 删除选中的线族（可撤销） */
+  /** 删除选中（实例级联删除，可撤销） */
   function deleteSelected() {
     if (!ui.selectedPatternIds.length) return
     const ids = [...ui.selectedPatternIds]
-    history.beginEdit(() => project.removePatterns(ids))
+    history.beginEdit(() => project.removeSelection(ids))
     ui.clearSelection()
   }
 
-  /** 给选中的每个图案生成新 id 副本（复制，可撤销） */
+  /** 复制选中（实例整体复制，可撤销） */
   function duplicateSelected() {
     if (!ui.selectedPatternIds.length) return
+    const ids = [...ui.selectedPatternIds]
     history.beginEdit(() => {
-      const clones = ui.selectedPatternIds
-        .map((id) => project.patternById(id))
-        .filter(Boolean)
-        .map((p) => {
-          if (p.kind === 'line') {
-            return {
-              ...p,
-              id: uid('ln'),
-              x1: p.x1 + 10,
-              y1: p.y1 + 10,
-              x2: p.x2 + 10,
-              y2: p.y2 + 10
-            }
-          }
-          return {
-            ...p,
-            id: uid('pat'),
-            ref: { x: p.ref.x + 10, y: p.ref.y + 10 }
-          }
-        })
-      project.addPatterns(clones)
-      ui.setSelectedPatterns(clones.map((c) => c.id))
+      const created = project.duplicatePatterns(ids, 10)
+      if (created.length) ui.setSelectedPatterns(created)
     })
   }
 

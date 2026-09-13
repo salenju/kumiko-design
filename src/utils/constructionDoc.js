@@ -14,7 +14,28 @@
 
 import { planCutGroups } from '../core/cutlist/index.js'
 import { analyzeParts } from '../core/parts/index.js'
+import { MANUAL_CATEGORY_KEY } from '../core/library/index.js'
 import { buildProjectJson } from './projectFile.js'
+
+/**
+ * 由项目数据构建「图案分类元信息」（patternId → { groupId, moduleId, moduleName, category }）。
+ * 与 project store 的 patternMeta getter 口径一致，供部件分类统计复用。
+ */
+export function buildPartsMeta(data) {
+  const byGroup = new Map((data?.groups || []).map((g) => [g.id, g]))
+  const meta = Object.create(null)
+  for (const p of data?.patterns || []) {
+    if (!p) continue
+    const g = p.groupId ? byGroup.get(p.groupId) : null
+    meta[p.id] = {
+      groupId: p.groupId || null,
+      moduleId: p.moduleId || (g ? g.moduleId : null),
+      moduleName: g ? g.name : '',
+      category: g ? g.category : MANUAL_CATEGORY_KEY
+    }
+  }
+  return meta
+}
 
 /** 显示数值：去尾 0（123.5 → 123.5、123.0 → 123） */
 export function fmtNum(v) {
@@ -102,14 +123,14 @@ function partsGroupsHtml(groups, unit) {
   const rows = groups
     .map(
       (g, i) =>
-        `<tr><td>${i + 1}</td><td>${fmtNum(g.length)} × ${fmtNum(g.width)}</td><td>${
+        `<tr><td>${i + 1}</td><td>${esc(g.categoryName || '')}</td><td>${esc(g.moduleName || '—')}</td><td>${fmtNum(g.length)} × ${fmtNum(g.width)}</td><td>${
           g.code ? `<code>${esc(g.code)}</code>` : '—'
         }</td><td>${g.pieces}</td><td>${g.notchCount}</td></tr>`
     )
     .join('')
   return {
     head,
-    body: `<table><thead><tr><th>#</th><th>尺寸（长 × 宽）mm</th><th>间距缩写</th><th>数量 piece</th><th>插口数</th></tr></thead><tbody>${rows}</tbody></table>`
+    body: `<table><thead><tr><th>#</th><th>图案分类</th><th>图案模块</th><th>尺寸（长 × 宽）mm</th><th>间距缩写</th><th>数量 piece</th><th>插口数</th></tr></thead><tbody>${rows}</tbody></table>`
   }
 }
 
@@ -205,11 +226,15 @@ export function buildCutlistCsv(cutGroups) {
   return `\uFEFF${lines.join('\r\n')}\r\n`
 }
 
-/** 图案部件 CSV：每行一个同型部件组 */
+/** 图案部件 CSV：每行一个同型部件组（含图案分类 / 模块维度） */
 export function buildPartsCsv(partsGroups) {
-  const lines = ['长(mm),宽(mm),间距缩写,数量(piece),插口数']
+  const lines = ['图案分类,图案模块,长(mm),宽(mm),间距缩写,数量(piece),插口数']
   for (const g of partsGroups) {
-    lines.push([g.length, g.width, g.code, g.pieces, g.notchCount].map((v) => csvCell(v)).join(','))
+    lines.push(
+      [g.categoryName || '', g.moduleName || '', g.length, g.width, g.code, g.pieces, g.notchCount]
+        .map((v) => csvCell(v))
+        .join(',')
+    )
   }
   return `\uFEFF${lines.join('\r\n')}\r\n`
 }
@@ -227,7 +252,7 @@ export function buildPartsCsv(partsGroups) {
 export function buildConstructionEntries(data, svgString, baseName, opts = {}) {
   const base = baseName || 'kumiko-design'
   const cutGroups = planCutGroups(data.segments, data.material)
-  const partsGroups = analyzeParts(data.patterns, data.spacingUnit ?? 10)
+  const partsGroups = analyzeParts(data.patterns, data.spacingUnit ?? 10, { meta: buildPartsMeta(data) })
   return [
     { name: `${base}.json`, data: buildProjectJson(data) },
     { name: `${base}-设计图.svg`, data: svgString },

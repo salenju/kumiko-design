@@ -22,6 +22,8 @@ export function buildProjectJson(source, opts = {}) {
     version: source.version,
     exportedAt: new Date().toISOString(),
     patterns: source.patterns,
+    groups: source.groups,
+    layout: source.layout,
     material: source.material,
     spacingUnit: source.spacingUnit,
     lineColors: source.lineColors
@@ -78,6 +80,9 @@ export function parseProjectJson(text) {
   const name = typeof data.name === 'string' && data.name.trim() ? data.name.trim() : undefined
   return {
     patterns: data.patterns,
+    // 图案库实例与初始化框架（旧文件缺失 → undefined，replaceAll 时回退默认）
+    groups: Array.isArray(data.groups) ? data.groups : undefined,
+    layout: data.layout && typeof data.layout === 'object' ? data.layout : undefined,
     material: data.material || {},
     // 旧版本文件缺 spacingUnit/lineColors → undefined，replaceAll 时回退默认
     spacingUnit: Number.isFinite(spacingUnit) && spacingUnit > 0 ? spacingUnit : undefined,

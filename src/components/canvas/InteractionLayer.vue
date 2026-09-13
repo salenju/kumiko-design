@@ -1,6 +1,6 @@
 <script setup>
 /**
- * InteractionLayer —— 框选矩形 + 画线族/单线草稿预览
+ * InteractionLayer —— 框选矩形 + 画线族/单线草稿预览 + 图案库放置预览
  */
 import { computed } from 'vue'
 
@@ -8,7 +8,15 @@ const props = defineProps({
   rubber: { type: Object, default: null }, // {x1,y1,x2,y2} mm
   draft: { type: Object, default: null }, // {kind:'family'|'line', ...}
   dragHints: { type: Array, default: () => [] }, // [{x,y,text,kind}] 拖拽提示（端点/等距/间距）
-  zoom: { type: Number, required: true }
+  zoom: { type: Number, required: true },
+  /** 图案库放置预览：目标矩形（mm） */
+  placeRect: { type: Object, default: null },
+  /** 放置预览的派生线段 */
+  placeSegments: { type: Array, default: () => [] },
+  /** 放置预览文案（模块名 + 参数摘要） */
+  placeLabel: { type: String, default: '' },
+  /** 是否吸附到槽位（预览配色区分） */
+  placeSnapped: { type: Boolean, default: false }
 })
 
 const rubberNorm = computed(() => {
@@ -59,6 +67,43 @@ const lineDraftInfo = computed(() => {
 
 <template>
   <g class="kd-interaction">
+    <!-- 图案库放置预览 -->
+    <g v-if="placeRect" style="pointer-events: none">
+      <rect
+        :x="placeRect.x"
+        :y="placeRect.y"
+        :width="placeRect.w"
+        :height="placeRect.h"
+        :fill="placeSnapped ? 'rgba(47,111,208,0.10)' : 'rgba(24,160,88,0.06)'"
+        :stroke="placeSnapped ? '#2f6fd0' : '#18a058'"
+        :stroke-width="1.6 / zoom"
+        :stroke-dasharray="`${6 / zoom} ${4 / zoom}`"
+      />
+      <line
+        v-for="(s, i) in placeSegments"
+        :key="`ps-${i}`"
+        :x1="s.x1"
+        :y1="s.y1"
+        :x2="s.x2"
+        :y2="s.y2"
+        :stroke="placeSnapped ? '#2f6fd0' : '#18a058'"
+        :stroke-width="Math.max(0.5, s.width || 3)"
+        stroke-opacity="0.45"
+      />
+      <text
+        :x="placeRect.x + 4 / zoom"
+        :y="placeRect.y - 6 / zoom"
+        :font-size="11 / zoom"
+        :fill="placeSnapped ? '#1f4e9c' : '#0f7c43'"
+        stroke="#fff"
+        :stroke-width="Math.max(0.8, 3 / zoom)"
+        paint-order="stroke"
+        stroke-linejoin="round"
+      >
+        {{ placeLabel }}
+      </text>
+    </g>
+
     <!-- 框选 -->
     <rect
       v-if="rubberNorm"

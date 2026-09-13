@@ -2,7 +2,7 @@
 /**
  * App —— 应用布局与全局快捷键
  */
-import { ref, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import {
   NConfigProvider,
   NMessageProvider,
@@ -19,9 +19,10 @@ import PatternPropertyPanel from './components/panels/PatternPropertyPanel.vue'
 import CutListPanel from './components/panels/CutListPanel.vue'
 import PartsPanel from './components/panels/PartsPanel.vue'
 import SettingsPanel from './components/panels/SettingsPanel.vue'
+import PatternLibraryPanel from './components/panels/PatternLibraryPanel.vue'
 import WorkspaceModal from './components/dialogs/WorkspaceModal.vue'
 import PwaPrompts from './components/dialogs/PwaPrompts.vue'
-import PresetsModal from './components/dialogs/PresetsModal.vue'
+import LayoutModal from './components/dialogs/LayoutModal.vue'
 import AiModal from './components/dialogs/AiModal.vue'
 import { useSelection } from './composables/useSelection.js'
 
@@ -32,12 +33,17 @@ const workspace = useWorkspaceStore()
 const selection = useSelection()
 
 const canvasRef = ref(null)
-const showPresets = ref(false)
 const showAi = ref(false)
 const showCutlist = ref(false)
 const showParts = ref(false)
 const showSettings = ref(false)
 const showWorkspace = ref(false)
+const showLibrary = ref(false)
+/** 初始化框架弹窗状态放在 ui store，便于属性面板等处也能唤起 */
+const showLayout = computed({
+  get: () => ui.layoutModalOpen,
+  set: (v) => ui.setLayoutModal(v)
+})
 
 /** 算料 / 图案部件 两个抽屉互斥打开 */
 function openCutlist() {
@@ -47,6 +53,10 @@ function openCutlist() {
 function openParts() {
   showParts.value = true
   showCutlist.value = false
+}
+/** 打开「初始化框架」弹窗（状态在 ui store） */
+function openLayout() {
+  ui.setLayoutModal(true)
 }
 
 /** 立即写回当前作品（⌘S） */
@@ -117,6 +127,11 @@ function onKeydown(e) {
     return
   }
   if (e.key === 'Escape' && !inField) {
+    // 图案库放置中：优先取消放置
+    if (ui.placing) {
+      ui.clearPlacing()
+      return
+    }
     ui.clearSelection()
     ui.setTool(ui.tool)
     return
@@ -157,7 +172,8 @@ onBeforeUnmount(() => {
     <n-message-provider>
       <div class="kd-full">
         <Toolbar
-          @open-presets="showPresets = true"
+          @open-library="showLibrary = true"
+          @open-layout="openLayout"
           @open-ai="showAi = true"
           @open-cutlist="openCutlist"
           @open-parts="openParts"
@@ -175,7 +191,8 @@ onBeforeUnmount(() => {
           </div>
         </div>
 
-        <PresetsModal v-model:show="showPresets" />
+        <PatternLibraryPanel v-model:show="showLibrary" />
+        <LayoutModal v-model:show="showLayout" @fit="onFit" />
         <AiModal v-model:show="showAi" />
         <CutListPanel v-model:show="showCutlist" />
         <PartsPanel v-model:show="showParts" />

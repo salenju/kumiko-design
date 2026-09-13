@@ -17,11 +17,17 @@ export const useUiStore = defineStore('ui', {
     gridEnabled: true,
     snapEnabled: true,
     labelsEnabled: false, // 全图尺寸标注
-    selectedPatternIds: [], // 当前选中线族
+    selectedPatternIds: [], // 当前选中图案（线族/单线/段集）
     hoveredSegmentId: null,
     // 交互草稿
     draft: null, // { x, y, angle, spacing, count, width, size } 画线族预览
-    spacePan: false // 空格临时平移中（配合鼠标拖动）
+    spacePan: false, // 空格临时平移中（配合鼠标拖动）
+    // 初始化框架（单元格）
+    slotVisible: true, // 单元格高亮显示开关
+    selectedSlot: null, // { row, col, key } 当前选中格子
+    layoutModalOpen: false, // 初始化框架弹窗
+    // 图案库放置：从库面板拖拽/点选后进入放置态
+    placing: null // { module, params, point:{x,y}, rect:{...}, cell:{row,col}|null }
   }),
 
   getters: {
@@ -76,6 +82,25 @@ export const useUiStore = defineStore('ui', {
     },
     setHovered(segmentId) {
       this.hoveredSegmentId = segmentId
+    },
+    setSlotVisible(v) {
+      this.slotVisible = !!v
+      if (!v) this.selectedSlot = null
+    },
+    setSelectedSlot(slot) {
+      this.selectedSlot = slot ? { row: slot.row, col: slot.col, key: slot.key } : null
+    },
+    clearSelectedSlot() {
+      this.selectedSlot = null
+    },
+    setPlacing(placing) {
+      this.placing = placing
+    },
+    clearPlacing() {
+      this.placing = null
+    },
+    setLayoutModal(v) {
+      this.layoutModalOpen = !!v
     }
   }
 })

@@ -3,12 +3,12 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
-import naive, { NSelect } from 'naive-ui'
+import naive, { NMessageProvider, NSelect } from 'naive-ui'
 import PatternPropertyPanel from './PatternPropertyPanel.vue'
 import { useProjectStore } from '../../stores/project.js'
 import { useUiStore } from '../../stores/ui.js'
 import { useHistoryStore } from '../../stores/history.js'
-import { generatePatterns } from '../../core/presets/index.js'
+import { generateModulePatterns } from '../../core/library/index.js'
 
 let pinia
 beforeEach(() => {
@@ -16,8 +16,14 @@ beforeEach(() => {
   setActivePinia(pinia)
 })
 
+/** 面板依赖 useMessage → 需包一层 n-message-provider */
+const PanelHost = {
+  components: { PatternPropertyPanel, NMessageProvider },
+  template: '<n-message-provider><PatternPropertyPanel /></n-message-provider>'
+}
+
 function mountPanel() {
-  return mount(PatternPropertyPanel, { global: { plugins: [pinia, naive] } })
+  return mount(PanelHost, { global: { plugins: [pinia, naive] } })
 }
 
 /** 面板内所有 Nx 倍数下拉（naive NSelect） */
@@ -30,7 +36,7 @@ describe('PatternPropertyPanel：间距按全局单位 Nx 倍数', () => {
     const project = useProjectStore()
     const history = useHistoryStore()
     const ui = useUiStore()
-    const patterns = generatePatterns('koushi', { size: 60, spacing: 30, width: 2 })
+    const patterns = generateModulePatterns('koushi', { size: 60, spacing: 30, width: 2 })
     project.addPatterns(patterns)
     ui.setSelectedPatterns([patterns[0].id])
 
@@ -54,7 +60,7 @@ describe('PatternPropertyPanel：间距按全局单位 Nx 倍数', () => {
   it('线族「间距」：改全局单位后同一 spacing 的倍数换算随之更新', async () => {
     const project = useProjectStore()
     const ui = useUiStore()
-    const patterns = generatePatterns('koushi', { size: 60, spacing: 30, width: 2 })
+    const patterns = generateModulePatterns('koushi', { size: 60, spacing: 30, width: 2 })
     project.addPatterns(patterns)
     ui.setSelectedPatterns([patterns[0].id])
 

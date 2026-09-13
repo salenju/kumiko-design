@@ -17,7 +17,17 @@ import { useViewport } from '../../composables/useViewport.js'
 import { useSelection } from '../../composables/useSelection.js'
 import { usePatternTool } from '../../composables/usePatternTool.js'
 import { equalSpacingHint, parallelEndpointAlign, referenceParallel } from '../../core/patterns/index.js'
+import {
+  buildEndFaces,
+  buildModulePatterns,
+  segmentsFromPatterns,
+  placeRect,
+  slotRect,
+  layoutBounds,
+  DEFAULT_END_CUT
+} from '../../core/index.js'
 import GridLayer from './GridLayer.vue'
+import SlotLayer from './SlotLayer.vue'
 import PatternLayer from './PatternLayer.vue'
 import InteractionLayer from './InteractionLayer.vue'
 
@@ -30,6 +40,92 @@ const svgEl = ref(null)
 const { viewBox, screenToWorld, zoomAt, panByPx, px, fitTo } = useViewport(hostEl)
 const selection = useSelection()
 const patternTool = usePatternTool()
+
+/* ---------- 末端切口角：端面计算 ---------- */
+
+/** patternId → bounds（端面判定需要知道木条所属图案的绘制范围） */
+const boundsByPattern = computed(() => {
+  const m = Object.create(null)
+  for (const p of project.patterns) if (p.bounds) m[p.id] = p.bounds
+  return m
+})
+
+/** 全部边界端面（非方切时才绘制，见 PatternLayer） */
+const endFaces = computed(() =>
+  buildEndFaces(
+    project.segments,
+    (seg) => boundsByPattern.value[seg.patternId] || null,
+    (seg) => project.patternMeta[seg.patternId]?.endCut ?? DEFAULT_END_CUT,
+    (seg) => Math.max(seg.width || 3, 6 / ui.zoom)
+  )
+)
+
+/* ---------- 图案库放置（placing） ---------- */
+
+/** 放置预览：目标矩形 + 预览几何 */
+const placeRectPreview = computed(() => (ui.placing ? ui.placing.rect : null))
+
+const placeSegments = computed(() => {
+  const p = ui.placing
+  if (!p || !p.rect) return []
+  return segmentsFromPatterns(buildModulePatterns(p.module, { rect: p.rect, params: p.params }))
+})
+
+const placeLabel = computed(() => {
+  const p = ui.placing
+  if (!p) return ''
+  const pp = p.params || {}
+  const bits = []
+  if (Number.isFinite(pp.spacing)) bits.push(`间距 ${pp.spacing}mm`)
+  if (Number.isFinite(pp.width)) bits.push(`宽 ${pp.width}mm`)
+  if (Number.isFinite(pp.endCut) && pp.endCut !== 90) bits.push(`端角 ${pp.endCut}°`)
+  return `${p.module?.name || '图案'}${bits.length ? ` · ${bits.join(' · ')}` : ''}（单击放置 / Esc 取消）`
+})
+
+/** 框架整体包围盒（fit 用） */
+const layoutBox = computed(() => (project.layout?.enabled ? layoutBounds(project.layout) : null))
+
+/** 更新放置预览到某个世界坐标 */
+function updatePlacingAt(w) {
+  const p = ui.placing
+  if (!p) return
+  const slot = project.slotAt(w)
+  const rect = slot ? slotRect(project.layout, slot.row, slot.col) : placeRect(w, p.params?.size ?? 300)
+  ui.setPlacing({
+    ...p,
+    point: { x: w.x, y: w.y },
+    rect,
+    cell: slot ? { row: slot.row, col: slot.col, key: slot.key } : null
+  })
+}
+
+/** 在给定世界坐标提交放置，返回是否已放置 */
+function commitPlacingAt(w) {
+  const p = ui.placing
+  if (!p) return false
+  const slot = project.slotAt(w)
+  const rect = slot ? slotRect(project.layout, slot.row, slot.col) : p.rect || placeRect(w, p.params?.size ?? 300)
+  const cell = slot ? { row: slot.row, col: slot.col } : null
+  history.beginEdit(() => {
+    const g = project.addGroup({ module: p.module, params: p.params, rect, cell })
+    if (g) ui.setSelectedPatterns(g.patternIds)
+  })
+  ui.clearPlacing()
+  ui.clearSelectedSlot()
+  return true
+}
+
+/** 空白处点击：优先选中槽位，否则清空选择 */
+function handleEmptyClick(w) {
+  const slot = project.slotAt(w)
+  if (slot) {
+    ui.clearSelection()
+    ui.setSelectedSlot(slot)
+    return
+  }
+  ui.clearSelectedSlot()
+  ui.clearSelection()
+}
 
 // 绘制类工具（画线族/画单线共用 usePatternTool 指针状态机）
 const drawModes = ['pattern', 'line']
@@ -124,6 +220,11 @@ function worldOf(e) {
 
 function onPointerDown(e) {
   const w = worldOf(e)
+  // 图案库放置中：单击 = 放下图案
+  if (ui.placing) {
+    commitPlacingAt(w)
+    return
+  }
   activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY })
   // 捕获指针：保证拖出容器仍收到 move/up
   try {
@@ -179,6 +280,11 @@ function onPointerMove(e) {
   if (multiGesture.value) {
     const ids = pinchPair.value ? pinchPair.value.ids : []
     if (ids.includes(e.pointerId)) applyPinch()
+    return
+  }
+  // 图案库放置：预览跟随光标（吸附到槽位）
+  if (ui.placing) {
+    updatePlacingAt(worldOf(e))
     return
   }
   if (!dragging.value) {
@@ -356,6 +462,12 @@ function onPointerUp(e) {
     return
   }
 
+  // 图案库拖拽摆放：指针在画布上抬起即放下
+  // （注意：桌面拖拽时 pointerdown 发生在图库面板而非画布，故 dragging 为 false，此处必须在 guard 之前处理）
+  if (ui.placing) {
+    commitPlacingAt(worldOf(e))
+    return
+  }
   if (!dragging.value) return
   const w = worldOf(e)
   dragging.value = false
@@ -409,15 +521,16 @@ function onPointerUp(e) {
     if (moved.value && pxW > minSel && pxH > minSel) {
       selection.boxSelect(r)
     } else {
-      // 视为点击空白 → 清空选择
-      ui.clearSelection()
+      // 视为点击空白 → 选中槽位或清空选择
+      handleEmptyClick(w)
     }
     rubber.value = null
     return
   }
   if (moved.value) return
   const additive = e.shiftKey || e.metaKey || e.ctrlKey
-  selection.clickAt(w.x, w.y, additive)
+  const hit = selection.clickAt(w.x, w.y, additive)
+  if (!hit && !additive) handleEmptyClick(w)
 }
 
 function onPointerLeave() {
@@ -429,9 +542,23 @@ function onWheel(e) {
   zoomAt(e.clientX, e.clientY, factor)
 }
 
-/** 供父组件调用：适配到图案整体（或指定 bounds） */
+/** 供父组件调用：适配到图案整体（或指定 bounds）；框架启用时把槽位一并纳入 */
 function fitToProject(bounds) {
-  fitTo(bounds ?? project.bounds, 80)
+  if (bounds) {
+    fitTo(bounds, 80)
+    return
+  }
+  const content = project.patterns.length ? project.bounds : null
+  const frame = project.layout?.enabled ? layoutBox.value : null
+  if (content && frame) {
+    const x = Math.min(content.x, frame.x)
+    const y = Math.min(content.y, frame.y)
+    const x2 = Math.max(content.x + content.w, frame.x + frame.w)
+    const y2 = Math.max(content.y + content.h, frame.y + frame.h)
+    fitTo({ x, y, w: x2 - x, h: y2 - y }, 80)
+    return
+  }
+  fitTo(content ?? frame ?? project.bounds, 80)
 }
 
 defineExpose({ fitToProject })
@@ -445,7 +572,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <div ref="hostEl" class="kumiko-canvas" :style="{ width: '100%', height: '100%', position: 'relative', cursor: isPanning ? 'grab' : drawModes.includes(mode) ? 'crosshair' : segDrag && segDrag.active ? 'grabbing' : 'default' }">
+  <div ref="hostEl" class="kumiko-canvas" :style="{ width: '100%', height: '100%', position: 'relative', cursor: ui.placing ? 'copy' : isPanning ? 'grab' : drawModes.includes(mode) ? 'crosshair' : segDrag && segDrag.active ? 'grabbing' : 'default' }">
     <svg
       ref="svgEl"
       :viewBox="viewBox"
@@ -460,6 +587,13 @@ onMounted(() => {
       @dblclick.prevent
     >
       <GridLayer :rect="viewRect" :zoom="ui.zoom" :enabled="ui.gridEnabled" />
+      <SlotLayer
+        v-if="ui.slotVisible && project.layout.enabled"
+        :slots="project.slots"
+        :occupancy="project.slotOccupancy"
+        :selected-key="ui.selectedSlot ? ui.selectedSlot.key : null"
+        :zoom="ui.zoom"
+      />
       <PatternLayer
         :segments="project.segments"
         :selected-ids="ui.selectedPatternIds"
@@ -467,8 +601,18 @@ onMounted(() => {
         :labels-enabled="ui.labelsEnabled"
         :zoom="ui.zoom"
         :color-scheme="project.lineColors"
+        :end-faces="endFaces"
       />
-      <InteractionLayer :rubber="rubber" :draft="ui.draft" :drag-hints="dragHints" :zoom="ui.zoom" />
+      <InteractionLayer
+        :rubber="rubber"
+        :draft="ui.draft"
+        :drag-hints="dragHints"
+        :zoom="ui.zoom"
+        :place-rect="placeRectPreview"
+        :place-segments="placeSegments"
+        :place-label="placeLabel"
+        :place-snapped="!!(ui.placing && ui.placing.cell)"
+      />
     </svg>
   </div>
 </template>

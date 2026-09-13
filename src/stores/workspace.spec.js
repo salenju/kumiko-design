@@ -6,7 +6,7 @@ import { useHistoryStore } from './history.js'
 import { useWorkspaceStore } from './workspace.js'
 import { createMemoryBackend, __setBackendForTest } from '../utils/workspace/db.js'
 import { __setRepoForTest } from '../utils/workspace/repo.js'
-import { generatePatterns } from '../core/presets/index.js'
+import { generateModulePatterns } from '../core/library/index.js'
 import { buildProjectJson } from '../utils/projectFile.js'
 
 const LEGACY_KEY = 'kumiko:project:v2'
@@ -44,7 +44,7 @@ describe('workspace store：初始化与迁移', () => {
   })
 
   it('旧版 localStorage 单项目自动迁入为「我的作品」，并清理旧 key', async () => {
-    const patterns = generatePatterns('koushi', { size: 80, spacing: 20, width: 2 })
+    const patterns = generateModulePatterns('koushi', { size: 80, spacing: 20, width: 2 })
     localStorage.setItem(
       LEGACY_KEY,
       JSON.stringify({
@@ -83,7 +83,7 @@ describe('workspace store：作品 CRUD', () => {
 
     const firstId = workspace.currentId
     history.beginEdit(() =>
-      project.addPatterns(generatePatterns('koushi', { size: 100, spacing: 20, width: 2 }))
+      project.addPatterns(generateModulePatterns('koushi', { size: 100, spacing: 20, width: 2 }))
     )
     const firstPatternIds = project.patterns.map((p) => p.id)
     await workspace.saveCurrentNow()
@@ -96,7 +96,7 @@ describe('workspace store：作品 CRUD', () => {
     expect(history.canUndo).toBe(false)
 
     history.beginEdit(() =>
-      project.addPatterns(generatePatterns('diagonal', { size: 60, spacing: 10, width: 2 }))
+      project.addPatterns(generateModulePatterns('diagonal', { size: 60, spacing: 10, width: 2 }))
     )
     await workspace.saveCurrentNow()
     expect(workspace.currentWork.data.patterns.length).toBe(2)
@@ -126,7 +126,7 @@ describe('workspace store：作品 CRUD', () => {
     const id = workspace.currentId
 
     history.beginEdit(() =>
-      project.addPatterns(generatePatterns('koushi', { size: 100, spacing: 20, width: 2 }))
+      project.addPatterns(generateModulePatterns('koushi', { size: 100, spacing: 20, width: 2 }))
     )
     workspace.scheduleSave(5)
     await new Promise((r) => setTimeout(r, 30))
@@ -171,7 +171,7 @@ describe('workspace store：作品 CRUD', () => {
 describe('workspace store：导入', () => {
   it('导入项目文件为新作品（按文件名命名、同名加序号、可选名称优先）', async () => {
     const workspace = await initStore()
-    const patterns = generatePatterns('koushi', { size: 60, spacing: 20, width: 2 })
+    const patterns = generateModulePatterns('koushi', { size: 60, spacing: 20, width: 2 })
     const text = buildProjectJson(
       { version: 5, patterns, material: {}, spacingUnit: 10, lineColors: undefined },
       { name: '方格 300' }

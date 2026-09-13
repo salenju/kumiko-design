@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { generatePatterns } from '../../core/presets/index.js'
+import { generateModulePatterns } from '../../core/library/index.js'
 import { parseProjectJson } from '../projectFile.js'
 import {
   buildBackupFiles,
@@ -22,7 +22,7 @@ import { createMemoryBackend } from './db.js'
 
 const sampleData = () => ({
   version: 5,
-  patterns: generatePatterns('koushi', { size: 100, spacing: 20, width: 2 }),
+  patterns: generateModulePatterns('koushi', { size: 100, spacing: 20, width: 2 }),
   material: { stockLength: 1200, kerf: 1.5, endAllowance: 2 },
   spacingUnit: 10,
   lineColors: { fallback: '#222222', angles: [{ angle: 0, color: '#4e79a7' }] }

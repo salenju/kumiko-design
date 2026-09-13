@@ -36,6 +36,8 @@ function emptyWorkData(project) {
   return {
     version: project.version,
     patterns: [],
+    groups: [],
+    layout: JSON.parse(JSON.stringify(project.layout)),
     material: JSON.parse(JSON.stringify(project.material)),
     spacingUnit: project.spacingUnit,
     lineColors: JSON.parse(JSON.stringify(project.lineColors))
@@ -47,6 +49,11 @@ function normalizeData(partial, project) {
   return {
     version: partial.version ?? project.version,
     patterns: Array.isArray(partial.patterns) ? partial.patterns : [],
+    groups: Array.isArray(partial.groups) ? partial.groups : [],
+    layout:
+      partial.layout && typeof partial.layout === 'object'
+        ? partial.layout
+        : JSON.parse(JSON.stringify(project.layout)),
     material:
       partial.material && typeof partial.material === 'object'
         ? partial.material
@@ -377,6 +384,8 @@ export const useWorkspaceStore = defineStore('workspace', {
       try {
         project.replaceAll({
           patterns: data.patterns,
+          groups: data.groups,
+          layout: data.layout,
           material: data.material,
           spacingUnit: data.spacingUnit,
           lineColors: data.lineColors

@@ -6,7 +6,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import naive from 'naive-ui'
 import PartsPanel from './PartsPanel.vue'
 import { useProjectStore } from '../../stores/project.js'
-import { generatePatterns } from '../../core/presets/index.js'
+import { generateModulePatterns } from '../../core/library/index.js'
 
 let pinia
 beforeEach(() => {
@@ -28,7 +28,7 @@ describe('PartsPanel 图案部件抽屉', () => {
 
   it('方格纹：统计出同型组并出现 piece/插口 标注', async () => {
     const project = useProjectStore()
-    project.addPatterns(generatePatterns('koushi', { size: 200, spacing: 20, width: 3 }))
+    project.addPatterns(generateModulePatterns('koushi', { size: 200, spacing: 20, width: 3 }))
     const w = mountParts()
     // naive 抽屉内容经 teleport 到 body
     await new Promise((r) => setTimeout(r, 50))

@@ -31,6 +31,8 @@ export function pickWorkData(project) {
     JSON.stringify({
       version: project.version,
       patterns: project.patterns,
+      groups: project.groups,
+      layout: project.layout,
       material: project.material,
       spacingUnit: project.spacingUnit,
       lineColors: project.lineColors

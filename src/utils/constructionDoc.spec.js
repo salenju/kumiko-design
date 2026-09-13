@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { deriveSegments } from '../core/patterns/derive.js'
-import { generatePatterns } from '../core/presets/index.js'
+import { generateModulePatterns } from '../core/library/index.js'
 import { planCutGroups } from '../core/cutlist/index.js'
 import { analyzeParts } from '../core/parts/index.js'
 import { buildSvgString } from './exportSvg.js'
@@ -13,7 +13,7 @@ import {
 } from './constructionDoc.js'
 
 function makeData({ size = 120, spacing = 20, width = 3 } = {}) {
-  const patterns = generatePatterns('koushi', { size, spacing, width })
+  const patterns = generateModulePatterns('koushi', { size, spacing, width })
   const segments = deriveSegments(patterns)
   return {
     version: 4,
@@ -82,9 +82,11 @@ describe('utils/constructionDoc 施工资料组装', () => {
     expect(lines[0]).toContain('间距缩写')
     expect(lines.length - 1).toBe(parts.length)
     const g = parts[0]
-    expect(lines[1].split(',')[0]).toBe(String(g.length))
-    expect(lines[1].split(',')[3]).toBe(String(g.pieces))
-    expect(lines[1].split(',')[4]).toBe(String(g.notchCount))
+    // 列序：图案分类, 图案模块, 长, 宽, 间距缩写, 数量, 插口数
+    expect(lines[0]).toContain('图案分类')
+    expect(lines[1].split(',')[2]).toBe(String(g.length))
+    expect(lines[1].split(',')[5]).toBe(String(g.pieces))
+    expect(lines[1].split(',')[6]).toBe(String(g.notchCount))
   })
 
   it('cutSummary：跨组合计与抽屉汇总口径一致', () => {

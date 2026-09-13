@@ -2,12 +2,12 @@
 /**
  * AiModal —— AI 生成入口（V2 §8.7 Phase 4 预留）
  * 当前实现：本地关键词解析（parseIntent），未来替换为 LLM function-calling，
- * 几何始终由 core/presets 本地生成。
+ * 几何始终由**图案库**（core/library）本地生成，插入结果为整体实例。
  */
 import { ref } from 'vue'
 import { NModal, NCard, NInput, NButton, NAlert } from 'naive-ui'
-import { parseIntent } from '../../ai/parseIntent.js'
-import { generatePatterns, PRESETS } from '../../core/presets/index.js'
+import { parseIntent, intentKeywords } from '../../ai/parseIntent.js'
+import { builtinModule, placeRect } from '../../core/library/index.js'
 import { useProjectStore } from '../../stores/project.js'
 import { useUiStore } from '../../stores/ui.js'
 import { useHistoryStore } from '../../stores/history.js'
@@ -39,24 +39,23 @@ function parse() {
   }
   const r = parseIntent(prompt.value)
   if (!r) {
-    error.value = '未能识别纹样类型。试试：麻叶纹 / 方格纹 / 斜格纹，可附带尺寸如 30cm、200mm。'
+    error.value = `未能识别图案类型。试试：${intentKeywords().join(' / ')}，可附带尺寸如 30cm、200mm。`
     return
   }
   result.value = r
 }
 
+/** 与图案库同一路径：生成整体实例（可整体再调参 / 复制 / 删除） */
 function add() {
-  if (!result.value) return
-  const patterns = generatePatterns(result.value.preset, {
-    cx: 0,
-    cy: 0,
-    size: result.value.params.size,
-    spacing: result.value.params.spacing,
-    width: 3
-  })
+  const r = result.value
+  if (!r) return
+  const module = builtinModule(r.moduleId)
+  if (!module) return
+  const params = { ...module.defaults, ...r.params }
+  const rect = placeRect(ui.center, params.size)
   history.beginEdit(() => {
-    project.addPatterns(patterns)
-    ui.setSelectedPatterns(patterns.map((p) => p.id))
+    const g = project.addGroup({ module, params, rect })
+    if (g) ui.setSelectedPatterns(g.patternIds)
   })
   close()
 }
@@ -83,14 +82,14 @@ function add() {
       </n-alert>
 
       <n-alert v-if="result" type="info" :show-icon="false" style="margin-bottom: 10px">
-        识别为 <b>{{ PRESETS[result.preset].label }}</b>（{{ result.preset }}），外框
-        {{ result.params.size }}mm、间距 {{ result.params.spacing }}mm。
+        识别为 <b>{{ result.name }}</b>（{{ result.moduleId }}），外框
+        {{ result.params.size }}mm、间距 {{ result.params.spacing }}mm；插入后可在右侧面板整体调参。
       </n-alert>
 
       <template #footer>
         <div style="display: flex; justify-content: space-between; align-items: center">
           <span style="font-size: 12px; color: #999">
-            当前为本地规则解析；接入 LLM 后行为不变，几何仍由本地生成器产出。
+            当前为本地规则解析；接入 LLM 后行为不变，几何仍由图案库本地产出。
           </span>
           <div style="display: flex; gap: 8px">
             <n-button @click="close">关闭</n-button>

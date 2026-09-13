@@ -16,7 +16,16 @@ import { downloadZip } from '../../utils/zip.js'
 import { colorForSeg } from '../../core/colors.js'
 import { formatShortcut } from '../../utils/platform.js'
 
-const emit = defineEmits(['open-presets', 'open-ai', 'open-cutlist', 'open-parts', 'open-settings', 'open-workspace', 'fit'])
+const emit = defineEmits([
+  'open-library',
+  'open-layout',
+  'open-ai',
+  'open-cutlist',
+  'open-parts',
+  'open-settings',
+  'open-workspace',
+  'fit'
+])
 const ui = useUiStore()
 const history = useHistoryStore()
 const project = useProjectStore()
@@ -114,6 +123,8 @@ function exportFile() {
     const data = {
       version: project.version,
       patterns: project.patterns,
+      groups: project.groups,
+      layout: project.layout,
       material: project.material,
       spacingUnit: project.spacingUnit,
       lineColors: project.lineColors,
@@ -189,9 +200,9 @@ function toggleLabels() {
 
     <div class="tb-sep"></div>
 
-    <!-- 纹样：往画布添加 -->
+    <!-- 图案：图案库（含原「预设」的全部图案与参数弹窗） -->
     <div class="tb-group">
-      <button class="tb-btn primary" @click="emit('open-presets')">＋ 预设纹样</button>
+      <button class="tb-btn primary" title="图案库：分类浏览图案模块，单击插入 / 参数弹窗 / 拖拽到画布（拖到格子吸附）；也可在此生成初始化框架" @click="emit('open-library')">▤ 图案库</button>
       <button class="tb-btn" @click="emit('open-ai')">✦ AI 生成</button>
     </div>
 

@@ -10,11 +10,13 @@
  *   - x 倍数下拉（线族间距 / 单线相邻线间距）：选中即应用「Nx = N × 全局间距单位」。
  */
 import { ref, computed } from 'vue'
-import { NButton, NSelect } from 'naive-ui'
+import { NButton, NSelect, NModal, NCard, NInput, useMessage } from 'naive-ui'
 import { useProjectStore } from '../../stores/project.js'
 import { useUiStore } from '../../stores/ui.js'
 import { useHistoryStore } from '../../stores/history.js'
+import { useLibraryStore } from '../../stores/library.js'
 import { useSelection } from '../../composables/useSelection.js'
+import { categoryName, MANUAL_CATEGORY_KEY, frameLineCount } from '../../core/library/index.js'
 import {
   angleDegOfVector,
   endFromPolar,
@@ -33,7 +35,9 @@ import KNumberField from './KNumberField.vue'
 const project = useProjectStore()
 const ui = useUiStore()
 const history = useHistoryStore()
+const library = useLibraryStore()
 const selection = useSelection()
+const message = useMessage()
 
 const startSnapshot = ref(null)
 
@@ -209,6 +213,104 @@ function commitAdjacent(p, v) {
     }
   })
 }
+
+/* ---------- 图案库实例（PatternGroup）参数 ---------- */
+
+/** 选中项所属的实例集合 */
+const selectedGroups = computed(() => {
+  const ids = new Set()
+  for (const p of ui.selectedPatterns) if (p.groupId) ids.add(p.groupId)
+  return [...ids].map((id) => project.groupById(id)).filter(Boolean)
+})
+
+/** 恰好选中单一实例时用于展示实例参数卡 */
+const singleGroup = computed(() => (selectedGroups.value.length === 1 ? selectedGroups.value[0] : null))
+
+/** 选中的框架格线（由 layout 参数管理，单独提示，不逐条编辑） */
+const frameSelectedIds = computed(() =>
+  ui.selectedPatternIds.filter((id) => project.patternById(id)?.frame)
+)
+
+/** 逐图案编辑卡：隐藏实例成员（由实例卡统一编辑）与框架格线（由框架参数管理） */
+const editablePatterns = computed(() =>
+  ui.selectedPatterns.filter((p) => !p.frame && !(singleGroup.value && p.groupId))
+)
+
+/** 无实例归属、且非框架线的散图案 id（末端切口角直接存在图案上） */
+const manualIds = computed(() =>
+  ui.selectedPatternIds.filter((id) => {
+    const p = project.patternById(id)
+    return p && !p.groupId && !p.frame
+  })
+)
+
+const manualEndCut = computed(() => {
+  const first = manualIds.value.map((id) => project.patternById(id)).find(Boolean)
+  return first ? project.patternMeta[first.id]?.endCut ?? 90 : 90
+})
+
+function beginGroupEdit() {
+  onFieldFocus()
+}
+
+/** 修改实例参数 → 整体重建几何并保持选中 */
+function setGroupParam(g, key, value) {
+  const v = Number(value)
+  if (!Number.isFinite(v)) {
+    onFieldCommit()
+    return
+  }
+  const res = project.updateGroup(g.id, { params: { [key]: v } })
+  if (res) ui.setSelectedPatterns(res.patternIds)
+  onFieldCommit()
+}
+
+function unbindGroup(g) {
+  history.beginEdit(() => project.unbindGroupCell(g.id))
+  message.success('已解除槽位绑定（转为自由放置）')
+}
+
+function removeGroupWithPatterns(g) {
+  history.beginEdit(() => project.removeGroups([g.id]))
+  ui.clearSelection()
+}
+
+/** 散图案末端切口角 */
+function setManualEndCut(ids, value) {
+  const v = Number(value)
+  if (!Number.isFinite(v)) {
+    onFieldCommit()
+    return
+  }
+  project.setPatternEndCut(ids, v)
+  onFieldCommit()
+}
+
+/* ---------- 存为图案 ---------- */
+
+const saveModal = ref({ show: false, name: '' })
+
+function openSaveAsPattern() {
+  if (!ui.selectedPatterns.length) return
+  saveModal.value = { show: true, name: `我的图案 ${library.customCount + 1}` }
+}
+
+function confirmSaveAsPattern() {
+  const mod = library.saveFromSelection(ui.selectedPatterns, saveModal.value.name)
+  saveModal.value = { ...saveModal.value, show: false }
+  if (mod) message.success(`已存为图案「${mod.name}」，可在「图案库 → 我的图案」中复用`)
+  else message.error('选中内容无法归一化为图案')
+}
+
+/* ---------- 框架摘要（未选中时展示） ---------- */
+
+const layoutSummary = computed(() => {
+  const l = project.layout
+  if (!l?.enabled) return '未启用'
+  const n = frameLineCount(l)
+  const bound = project.groups.filter((g) => g.cell).length
+  return `${l.rows} 行 × ${l.cols} 列（横线 ${n.horizontal} + 竖线 ${n.vertical}，已填 ${bound} 格）`
+})
 </script>
 
 <template>
@@ -229,8 +331,19 @@ function commitAdjacent(p, v) {
           <td>全局间距单位</td>
           <td>{{ project.spacingUnit }} mm（改：工具栏 ⚙ 设置）</td>
         </tr>
+        <tr>
+          <td>初始化框架</td>
+          <td>{{ layoutSummary }}</td>
+        </tr>
+        <tr>
+          <td>图案实例</td>
+          <td>{{ project.groups.length }} 个</td>
+        </tr>
       </table>
-      <p class="pp-hint">提示：点选线段选中其所属图案并编辑；Ctrl/Shift+点选多选；Delete 删除。</p>
+      <p class="pp-hint">提示：点选线段选中其所属图案（属图案库实例时整组选中）；Ctrl/Shift+点选多选；Delete 删除。</p>
+      <p class="pp-hint">
+        图案库：工具栏「▤ 图案库」；初始化框架：工具栏「▦ 初始化框架」。
+      </p>
     </div>
 
     <!-- 选中列表 -->
@@ -241,7 +354,90 @@ function commitAdjacent(p, v) {
         {{ selectionSummary.totalLen.toFixed(1) }} mm
       </div>
 
-      <div v-for="p in ui.selectedPatterns" :key="p.id" class="pp-card">
+      <!-- 图案库实例：整体参数 -->
+      <div v-if="singleGroup" class="pp-card pp-group-card">
+        <div class="pp-card-head">
+          <span class="pp-card-title">
+            实例 · {{ singleGroup.name }}
+            <span class="pp-cat">{{ categoryName(singleGroup.category) }}</span>
+          </span>
+          <div class="pp-card-ops">
+            <n-button size="tiny" quaternary type="error" title="删除实例（连带其木条）" @click="removeGroupWithPatterns(singleGroup)">🗑</n-button>
+          </div>
+        </div>
+
+        <div v-if="singleGroup.cell" class="pp-group-cell">
+          已绑定槽位 {{ singleGroup.cell.row + 1 }}-{{ singleGroup.cell.col + 1 }}
+          <n-button size="tiny" quaternary @click="unbindGroup(singleGroup)">解除绑定</n-button>
+        </div>
+
+        <div class="pp-field">
+          <label>间距 mm（相邻木条中心距）</label>
+          <k-number-field
+            :value="singleGroup.params.spacing"
+            :step="project.spacingUnit || 1"
+            :min="1"
+            :live="false"
+            @focus="beginGroupEdit"
+            @commit="setGroupParam(singleGroup, 'spacing', $event)"
+          />
+        </div>
+        <div class="pp-field">
+          <label>木条宽 mm</label>
+          <k-number-field
+            :value="singleGroup.params.width"
+            :step="0.5"
+            :min="0.1"
+            :live="false"
+            @focus="beginGroupEdit"
+            @commit="setGroupParam(singleGroup, 'width', $event)"
+          />
+        </div>
+        <div class="pp-field">
+          <label>末端切口角 °（90 = 方切，45 = 斜切）</label>
+          <k-number-field
+            :value="singleGroup.params.endCut ?? 90"
+            :step="5"
+            :min="10"
+            :max="170"
+            :live="false"
+            @focus="beginGroupEdit"
+            @commit="setGroupParam(singleGroup, 'endCut', $event)"
+          />
+        </div>
+        <div class="pp-hint2">
+          改参数会按当前槽位/放置矩形整体重建几何；末端切口角只影响端部造型，不影响长度与算料。
+        </div>
+      </div>
+
+      <!-- 框架格线：由「初始化框架」参数管理 -->
+      <div v-if="frameSelectedIds.length" class="pp-card">
+        <div class="pp-card-head"><span class="pp-card-title">初始化框架 · 格线（{{ frameSelectedIds.length }} 条）</span></div>
+        <div class="pp-hint2">
+          框架横线 / 竖线由「初始化框架」的行数、列数、间距、木条宽与末端切口角统一生成，
+          不能单独编辑或删除；改参数会整体重建。
+        </div>
+        <n-button block secondary size="small" @click="ui.setLayoutModal(true)">打开框架参数</n-button>
+      </div>
+
+      <!-- 散图案：末端切口角统一设置 -->
+      <div v-if="manualIds.length" class="pp-card">
+        <div class="pp-card-head"><span class="pp-card-title">手工绘制图案（{{ manualIds.length }} 个）</span></div>
+        <div class="pp-field">
+          <label>末端切口角 °（90 = 方切）</label>
+          <k-number-field
+            :value="manualEndCut"
+            :step="5"
+            :min="10"
+            :max="170"
+            :live="false"
+            @focus="onFieldFocus"
+            @commit="setManualEndCut(manualIds, $event)"
+          />
+        </div>
+      </div>
+
+      <div v-for="p in editablePatterns" :key="p.id" class="pp-card">
         <div class="pp-card-head">
           <span class="pp-card-title">{{ p.kind === 'line' ? '线段' : '线族' }} {{ p.id.slice(-5) }}</span>
           <div class="pp-card-ops">
@@ -362,10 +558,33 @@ function commitAdjacent(p, v) {
         </template>
       </div>
 
-      <n-button block type="error" secondary size="small" @click="removePatterns([...ui.selectedPatternIds])">
-        删除全部选中
-      </n-button>
+      <div class="pp-actions">
+        <n-button block secondary size="small" @click="openSaveAsPattern">＋ 存为图案</n-button>
+        <n-button block type="error" secondary size="small" @click="removePatterns([...ui.selectedPatternIds])">
+          删除全部选中
+        </n-button>
+      </div>
     </div>
+
+    <n-modal :show="saveModal.show" @update:show="(v) => (saveModal = { ...saveModal, show: v })">
+      <n-card style="width: 420px; max-width: 92vw" title="存为图案" :bordered="false">
+        <n-input
+          v-model:value="saveModal.name"
+          placeholder="如：我的三角网格"
+          :maxlength="40"
+          @keydown.enter.prevent="confirmSaveAsPattern"
+        />
+        <div class="pp-hint2" style="margin-top: 8px">
+          将按选中内容的外接矩形归一化，保存到「图案库 → 我的图案」（本机可用，跨作品复用）。
+        </div>
+        <template #footer>
+          <div style="display: flex; justify-content: flex-end; gap: 8px">
+            <n-button @click="saveModal = { ...saveModal, show: false }">取消</n-button>
+            <n-button type="primary" :disabled="!saveModal.name.trim()" @click="confirmSaveAsPattern">存为图案</n-button>
+          </div>
+        </template>
+      </n-card>
+    </n-modal>
   </div>
 </template>
 
@@ -389,4 +608,16 @@ function commitAdjacent(p, v) {
 .pp-stats { font-size: 12px; color: #666; margin-top: 6px; }
 .kd-mini-table { border-collapse: collapse; font-size: 13px; margin: 6px 0; }
 .kd-mini-table td { padding: 3px 12px 3px 0; }
+.pp-actions { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+/* 图案库实例卡：淡蓝背景区分 */
+.pp-group-card { background: #f7faff; border-color: #cfe0f8; }
+.pp-cat {
+  font-size: 11px; font-weight: 400; color: #1f4e9c; background: #e8effc;
+  border-radius: 4px; padding: 1px 5px; margin-left: 4px;
+}
+.pp-group-cell {
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 12px; color: #1f4e9c; background: #eef4ff; border-radius: 6px;
+  padding: 4px 8px; margin-bottom: 8px;
+}
 </style>
